@@ -9,12 +9,9 @@ export default defineConfig({
     port: Number(process.env.PORT) || 4000,
     strictPort: true,
     watch: { usePolling: true, interval: 200 },
-    proxy: {
-      '/api': {
-        target: 'http://backend:3000',
-        changeOrigin: true,
-      },
-    },
+    // No proxy needed — the frontend connects directly to the backend WS on
+    // its own port (default 3000) using VITE_WS_HOST / VITE_WS_PORT. See
+    // src/api/client.js. Compose.yaml exposes both ports on the host.
   },
   build: {
     outDir: 'build',

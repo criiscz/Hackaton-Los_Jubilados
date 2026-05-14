@@ -1,14 +1,14 @@
 {
   "test":{
     "PORT": 3000,
-    "MONGODB_URI": "mongodb://38.210.96.132:9098/TodoAppTest",
+    "MONGODB_URI": "mongodb://admin:123456789@38.210.96.132:9098/TodoAppTest?authSource=admin",
     "JWT_SECRET": "dev-only-change-me",
     "CHAT_DURATION_MS": 300000,
     "MAX_EXTENSIONS": 3
   },
   "development":{
     "PORT": 3000,
-    "MONGODB_URI": "mongodb://38.210.96.132:9098/TodoApp",
+    "MONGODB_URI": "mongodb://admin:123456789@38.210.96.132:9098/TodoApp?authSource=admin",
     "JWT_SECRET": "dev-only-change-me",
     "CHAT_DURATION_MS": 300000,
     "MAX_EXTENSIONS": 3

@@ -1,4 +1,5 @@
 import React from 'react';
+import ConnectionPill from './ConnectionPill';
 
 // Responsive app shell.
 //   - Mobile (<md): full-bleed; the active screen owns the viewport.
@@ -15,6 +16,7 @@ export default function PhoneFrame({ children }) {
           {children}
         </div>
       </div>
+      <ConnectionPill />
     </div>
   );
 }

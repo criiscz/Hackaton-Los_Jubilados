@@ -1,3 +1,5 @@
+const { log } = require("./logger");
+
 const encodeFrame = (data) => {
   const payload = Buffer.from(data);
   const payloadLength = payload.length;
@@ -51,6 +53,11 @@ const decodeFrame = (buffer) => {
 
 const send = (socket, message) => {
   if (socket && !socket.destroyed) {
+    log("WS->", {
+      remote: socket.remoteAddr,
+      userId: socket.userId || null,
+      type: message && message.type,
+    });
     socket.write(encodeFrame(JSON.stringify(message)));
   }
 };

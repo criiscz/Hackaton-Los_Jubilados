@@ -3,10 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import Chip from '../components/Chip';
 import EmojiPicker from '../components/EmojiPicker';
 import FloatingEmoji from '../components/FloatingEmoji';
+import CursedDatePicker from '../components/CursedDatePicker';
 import { INTERESTS } from '../constants/interests';
-import { api } from '../api/client';
+import { wsApi } from '../api/client';
 
 const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function ageFromIso(iso) {
+  if (!iso) return null;
+  const dob = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+  return age;
+}
+
+function prettyDob(iso) {
+  if (!iso) return null;
+  return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -14,31 +35,62 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
   const [interest, setInterest] = useState('');
+  const [dob, setDob] = useState('');
   const [emoji, setEmoji] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [dobOpen, setDobOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const emailValid = !email || emailRx.test(email);
-  const allValid = name.trim().length >= 2 && emailRx.test(email) && interest && emoji;
+  const age = ageFromIso(dob);
+  const dobValid = age !== null && age >= 18 && age <= 120;
+  const allValid =
+    name.trim().length >= 2 && emailRx.test(email) && interest && emoji && dobValid;
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e && e.preventDefault();
-    if (!allValid) return;
+    if (!allValid || submitting) return;
+    setSubmitError(null);
+    setSubmitting(true);
+
+    // Deterministic stub password (the form does not collect one; backend
+    // expects ≥8 chars). Tied to email so re-registration is idempotent.
+    const password = `mm_${btoa(email).slice(0, 14)}`;
+    const description = `${INTERESTS.find((i) => i.id === interest)?.label || interest} · ${emoji}`;
+
+    let backendUser = null;
+    try {
+      const res = await wsApi.register({
+        email,
+        password,
+        name,
+        description,
+        profileEmoji: emoji,
+      });
+      backendUser = res.user || null;
+    } catch (err) {
+      // Backend may reject (duplicate email, offline, etc.) — surface in UI
+      // and still let the user enter the app with a local profile.
+      setSubmitError(err.message || 'Backend rejected the signup.');
+    }
+
     try {
       sessionStorage.setItem(
         'matchmoji:profile',
-        JSON.stringify({ name, email, interest, emoji }),
+        JSON.stringify({
+          id: backendUser?.id || backendUser?._id || `local_${Date.now()}`,
+          name,
+          email,
+          interest,
+          dob,
+          emoji,
+        }),
       );
       sessionStorage.removeItem('matchmoji:demo');
     } catch {}
-    navigate('/feed');
-  };
 
-  const tryDemo = async () => {
-    const profile = await api.demoLogin();
-    try {
-      sessionStorage.setItem('matchmoji:profile', JSON.stringify(profile));
-      sessionStorage.setItem('matchmoji:demo', '1');
-    } catch {}
+    setSubmitting(false);
     navigate('/feed');
   };
 
@@ -181,6 +233,58 @@ export default function Register() {
           </div>
 
           <div>
+            <Label>Date of birth</Label>
+            <p className="mt-1 text-[12px] text-ink-mute">
+              must be 18+. picker is, uh… an experience.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDobOpen(true)}
+              aria-label={dob ? `change date of birth (current ${prettyDob(dob)})` : 'open date of birth picker'}
+              className={`mt-2 w-full flex items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left focus-pink transition-colors ${
+                dob ? 'bg-cream-deep border-pink/30' : 'bg-paper border-ink/10 hover:border-ink/30'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <span aria-hidden="true" className="text-[26px]">
+                  🗓️
+                </span>
+                <span>
+                  {dob ? (
+                    <>
+                      <span className="block display-italic text-[18px] text-ink leading-tight">
+                        {prettyDob(dob)}
+                      </span>
+                      <span className="block text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold">
+                        you are {age} · {age >= 18 ? 'cleared' : 'too young'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block display-italic text-[18px] text-ink leading-tight">
+                        Open Calendar Hell™
+                      </span>
+                      <span className="block text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold">
+                        one click per month · enjoy
+                      </span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <span aria-hidden="true" className="text-ink-mute">
+                →
+              </span>
+            </button>
+            {dob && !dobValid && (
+              <span className="mt-1.5 block text-[12px] font-semibold text-danger">
+                {age !== null && age < 18
+                  ? "You must be at least 18."
+                  : "That date doesn't add up."}
+              </span>
+            )}
+          </div>
+
+          <div>
             <Label>Your signature emoji</Label>
             <p className="mt-1 text-[12px] text-ink-mute">
               this is your identity in the app. pick with love.
@@ -221,22 +325,21 @@ export default function Register() {
             </div>
           </div>
 
+          {submitError && (
+            <div role="alert" className="text-[12px] font-semibold text-coral">
+              {submitError} (entering the app with a local profile.)
+            </div>
+          )}
+
           {/* CTA on desktop is inline; on mobile we use a sticky bar */}
           <div className="hidden lg:flex items-center gap-3 pt-4">
             <button
               type="button"
-              onClick={tryDemo}
-              className="flex-1 py-3.5 rounded-2xl bg-cream-deep text-ink font-semibold focus-pink"
-            >
-              Just give me the demo
-            </button>
-            <button
-              type="button"
               onClick={submit}
-              disabled={!allValid}
-              className="flex-[1.3] py-3.5 rounded-2xl bg-ink text-cream font-semibold text-[17px] focus-pink shadow-[var(--shadow-pop)] disabled:opacity-40 disabled:cursor-not-allowed active:translate-y-[1px]"
+              disabled={!allValid || submitting}
+              className="flex-1 py-4 rounded-2xl bg-ink text-cream font-semibold text-[17px] focus-pink shadow-[var(--shadow-pop)] disabled:opacity-40 disabled:cursor-not-allowed active:translate-y-[1px]"
             >
-              Start matching ✨
+              {submitting ? 'Registering…' : 'Start matching ✨'}
             </button>
           </div>
         </div>
@@ -248,10 +351,10 @@ export default function Register() {
           <button
             type="button"
             onClick={submit}
-            disabled={!allValid}
+            disabled={!allValid || submitting}
             className="pointer-events-auto w-full py-4 rounded-2xl bg-ink text-cream font-semibold text-[17px] focus-pink shadow-[var(--shadow-pop)] disabled:opacity-40 disabled:cursor-not-allowed active:translate-y-[1px]"
           >
-            Start matching ✨
+            {submitting ? 'Registering…' : 'Start matching ✨'}
           </button>
         </div>
       </div>
@@ -261,6 +364,13 @@ export default function Register() {
         value={emoji}
         onChange={setEmoji}
         onClose={() => setPickerOpen(false)}
+      />
+
+      <CursedDatePicker
+        open={dobOpen}
+        value={dob}
+        onChange={setDob}
+        onClose={() => setDobOpen(false)}
       />
     </div>
   );

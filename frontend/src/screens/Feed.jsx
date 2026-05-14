@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MatchCard from '../components/MatchCard';
 import ScheduleModal from '../components/ScheduleModal';
-import { api, DEMO_PROFILE } from '../api/client';
+import { api, clearAuth, getAuth, subscribeSearching } from '../api/client';
 
 export default function Feed() {
   const navigate = useNavigate();
@@ -12,24 +12,45 @@ export default function Feed() {
   const [jiggling, setJiggling] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduled, setScheduled] = useState([]);
+  const [pasteId, setPasteId] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [searching, setSearching] = useState(false);
 
+  const auth = getAuth();
+
+  // Require a registered (or at least locally saved) profile. Otherwise
+  // bounce to /register so we don't render placeholder data.
   useEffect(() => {
     let saved = null;
     try {
       const raw = sessionStorage.getItem('matchmoji:profile');
       if (raw) saved = JSON.parse(raw);
     } catch {}
-    if (!saved) {
-      saved = { ...DEMO_PROFILE };
-      try {
-        sessionStorage.setItem('matchmoji:profile', JSON.stringify(saved));
-        sessionStorage.setItem('matchmoji:demo', '1');
-      } catch {}
+    if (!saved && !auth.userId) {
+      navigate('/register', { replace: true });
+      return;
     }
-    setProfile(saved);
-    api.getCandidates().then(setCandidates);
-    api.getScheduled().then(setScheduled);
+    setProfile(saved || { name: auth.user?.name, emoji: auth.user?.profileEmoji });
+  }, [auth.userId, auth.user, navigate]);
+
+  // Live-subscribe to backend candidate + scheduled lists + search heartbeat.
+  useEffect(() => {
+    const unsubC = api.subscribeCandidates(setCandidates);
+    const unsubS = api.subscribeScheduled(setScheduled);
+    const unsubSearch = subscribeSearching(setSearching);
+    return () => {
+      unsubC && unsubC();
+      unsubS && unsubS();
+      unsubSearch && unsubSearch();
+    };
   }, []);
+
+  // Keep idx within bounds.
+  useEffect(() => {
+    if (idx >= candidates.length && candidates.length > 0) {
+      setIdx(Math.max(0, candidates.length - 1));
+    }
+  }, [candidates.length, idx]);
 
   const current = candidates[idx];
   const next = candidates[idx + 1];
@@ -49,12 +70,38 @@ export default function Feed() {
   const onSchedule = async (when) => {
     if (!current) return;
     setScheduleOpen(false);
-    const match = await api.scheduleMatch({
+    await api.scheduleMatch({
       candidateId: current.id,
       when: when?.toISOString?.() || when,
     });
-    setScheduled((s) => [...s, match]);
     advance();
+  };
+
+  const signOut = () => {
+    clearAuth();
+    try {
+      sessionStorage.removeItem('matchmoji:profile');
+      sessionStorage.removeItem('matchmoji:demo');
+      sessionStorage.removeItem('matchmoji:clientId');
+    } catch {}
+    navigate('/');
+  };
+
+  const copyMyId = async () => {
+    if (!auth.userId) return;
+    try {
+      await navigator.clipboard.writeText(auth.userId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {}
+  };
+
+  const addPasted = (e) => {
+    e && e.preventDefault();
+    const id = pasteId.trim();
+    if (!id) return;
+    api.addCandidateById(id);
+    setPasteId('');
   };
 
   return (
@@ -73,16 +120,63 @@ export default function Feed() {
                 {profile?.emoji || '✨'}
               </span>
             </div>
+            {auth.userId && (
+              <button
+                type="button"
+                onClick={copyMyId}
+                title="Copy your user id"
+                className="mt-1 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-ink-mute font-semibold focus-pink rounded"
+              >
+                id ·{' '}
+                <span className="font-mono normal-case tracking-normal text-ink/80">
+                  {String(auth.userId).slice(-10)}
+                </span>
+                <span aria-hidden="true">{copied ? '✓' : '⧉'}</span>
+              </button>
+            )}
           </div>
-          <div className="lg:hidden">
-            <ScheduledStack scheduled={scheduled} onOpen={(m) => navigate(`/chat/${m.id}`)} />
+          <div className="flex items-center gap-2">
+            <div className="lg:hidden">
+              <ScheduledStack scheduled={scheduled} onOpen={(m) => navigate(`/chat/${m.id}`)} />
+            </div>
+            <button
+              type="button"
+              onClick={signOut}
+              aria-label="Sign out"
+              title="Sign out"
+              className="w-10 h-10 rounded-full bg-paper border border-ink/10 text-ink text-[18px] flex items-center justify-center focus-pink shadow-[var(--shadow-soft)] hover:border-pink/40"
+            >
+              <span aria-hidden="true">🚪</span>
+            </button>
           </div>
         </header>
 
+        {/* search heartbeat */}
+        {searching && (
+          <div
+            className="mx-5 md:mx-8 mt-1 mb-2 inline-flex self-start items-center gap-2 rounded-full bg-paper border border-ink/10 px-3 py-1.5 shadow-[var(--shadow-soft)]"
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className="inline-block w-2 h-2 rounded-full bg-pink animate-[pulse_1.2s_ease-in-out_infinite]"
+              aria-hidden="true"
+            />
+            <span className="text-[11px] uppercase tracking-[0.18em] text-ink font-semibold">
+              searching for matches…
+            </span>
+            {candidates.length > 0 && (
+              <span className="text-[11px] text-ink-mute font-semibold">
+                · {candidates.length} found
+              </span>
+            )}
+          </div>
+        )}
+
         {/* card stack */}
-        <main className="relative flex flex-col items-center justify-center px-5 pt-2 pb-[210px] md:pb-[180px] flex-1">
+        <main className="relative flex flex-col items-center justify-center px-5 pt-2 pb-[260px] md:pb-[240px] flex-1">
           {!current ? (
-            <EmptyState />
+            <EmptyState onAddId={addPasted} pasteId={pasteId} setPasteId={setPasteId} searching={searching} />
           ) : (
             <div className="relative w-full max-w-[340px] md:max-w-[380px] mx-auto">
               {next && (
@@ -106,9 +200,12 @@ export default function Feed() {
           )}
         </main>
 
+        {/* paste-by-id helper (always visible — backend has no directory yet) */}
+        <PasteIdBar pasteId={pasteId} setPasteId={setPasteId} onAddId={addPasted} />
+
         {/* action bar */}
         {current && (
-          <div className="absolute bottom-0 left-0 right-0 z-20 pb-[max(env(safe-area-inset-bottom),22px)] pt-4 lg:pr-[320px]">
+          <div className="absolute bottom-[68px] left-0 right-0 z-20 pt-2 lg:pr-[320px]">
             <div className="flex items-center justify-center gap-7">
               <ActionButton
                 variant="pass"
@@ -148,6 +245,13 @@ export default function Feed() {
             <li>Chat in emojis. Pay to extend.</li>
           </ol>
         </div>
+        <button
+          type="button"
+          onClick={signOut}
+          className="text-[12px] font-semibold text-ink/70 underline decoration-pink decoration-2 underline-offset-4 focus-pink rounded self-start"
+        >
+          🚪 sign out
+        </button>
       </aside>
 
       <ScheduleModal
@@ -160,17 +264,48 @@ export default function Feed() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ searching }) {
   return (
-    <div className="text-center max-w-[280px] mx-auto py-12">
-      <div className="text-[72px]" aria-hidden="true">
-        🌵
+    <div className="text-center max-w-[340px] mx-auto py-10">
+      <div className={`text-[72px] ${searching ? 'animate-[heartbeat_1.4s_ease-in-out_infinite]' : ''}`} aria-hidden="true">
+        {searching ? '📡' : '🌵'}
       </div>
-      <h2 className="display-italic text-[28px] text-ink leading-tight mt-2">No one for now</h2>
+      <h2 className="display-italic text-[28px] text-ink leading-tight mt-2">
+        {searching ? 'Scanning the airwaves…' : 'No candidates yet'}
+      </h2>
       <p className="mt-2 text-[14px] text-ink-soft">
-        Come back later — the universe is loading spicy picks.
+        {searching
+          ? 'Asking the backend every few seconds. New profiles drop in here automatically.'
+          : "Have someone register in another tab and paste their user.id below to start swiping."}
       </p>
     </div>
+  );
+}
+
+function PasteIdBar({ pasteId, setPasteId, onAddId }) {
+  return (
+    <form
+      onSubmit={onAddId}
+      className="absolute bottom-0 left-0 right-0 z-10 px-4 md:px-6 pb-[max(env(safe-area-inset-bottom),12px)] pt-2 lg:pr-[336px] bg-cream/95 backdrop-blur-sm border-t border-ink/[0.06]"
+    >
+      <div className="max-w-[480px] mx-auto flex items-center gap-2">
+        <input
+          type="text"
+          value={pasteId}
+          onChange={(e) => setPasteId(e.target.value)}
+          placeholder="paste a user id from another tab"
+          aria-label="paste a user id to add a candidate"
+          className="flex-1 rounded-xl bg-paper border border-ink/10 px-3 py-2 text-[13px] font-mono text-ink focus-pink"
+        />
+        <button
+          type="submit"
+          className="px-3 py-2 rounded-xl bg-ink text-cream text-[13px] font-semibold focus-pink shadow-[var(--shadow-soft)] disabled:opacity-50"
+          disabled={!pasteId.trim()}
+        >
+          add
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -245,7 +380,8 @@ function ScheduledList({ scheduled, onOpen }) {
   if (!scheduled?.length) {
     return (
       <p className="text-[13px] text-ink-mute">
-        Match with someone to schedule your first 2-minute chat.
+        No scheduled chats yet. Swipe right to start one — once both sides like, you'll see the
+        match here.
       </p>
     );
   }
@@ -265,14 +401,16 @@ function ScheduledList({ scheduled, onOpen }) {
                 aria-hidden="true"
                 className="w-11 h-11 rounded-full bg-cream-deep flex items-center justify-center text-[22px]"
               >
-                {m.candidate?.emoji}
+                {m.candidate?.emoji || '💌'}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="display-italic text-[18px] text-ink leading-tight truncate">
-                  {m.candidate?.name}
+                  {m.candidate?.name || 'Match'}
                 </div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-ink-mute font-semibold">
-                  {when
+                  {m.status === 'pending'
+                    ? 'pending mutual like'
+                    : when
                     ? when.toLocaleString(undefined, {
                         month: 'short',
                         day: 'numeric',

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { decodeFrame, send, sendError } = require("./utils/ws");
 const { PUBLIC, AUTHED } = require("./handlers");
 const { clearUserSocket } = require("./handlers/state");
+const { log, previewPayload } = require("./utils/logger");
 
 const clients = new Set();
 
@@ -10,13 +11,30 @@ const handleMessage = async (socket, rawMessage) => {
   try {
     message = JSON.parse(rawMessage);
   } catch (error) {
+    log("WS<-", "invalid-json", {
+      remote: socket.remoteAddr,
+      userId: socket.userId || null,
+      raw: previewPayload(rawMessage),
+    });
     return sendError(socket, null, "Invalid JSON message");
   }
 
   const { type, payload } = message || {};
   if (!type || typeof type !== "string") {
+    log("WS<-", "missing-type", {
+      remote: socket.remoteAddr,
+      userId: socket.userId || null,
+      message: previewPayload(message),
+    });
     return sendError(socket, null, "Message 'type' is required");
   }
+
+  log("WS<-", {
+    remote: socket.remoteAddr,
+    userId: socket.userId || null,
+    type,
+    payload: previewPayload(payload),
+  });
 
   try {
     if (PUBLIC[type]) {
@@ -32,7 +50,13 @@ const handleMessage = async (socket, rawMessage) => {
     }
     sendError(socket, type, "Unknown message type");
   } catch (error) {
-    console.error(`[ws] handler error (${type}):`, error);
+    log("WS", "handler-error", {
+      remote: socket.remoteAddr,
+      userId: socket.userId || null,
+      type,
+      msg: error.message,
+      stack: error.stack,
+    });
     sendError(socket, type, error.message || "Internal error");
   }
 };
@@ -62,15 +86,28 @@ const cleanup = (socket) => {
 
 const setupWebSocketServer = (server) => {
   server.on("upgrade", (req, socket) => {
+    const remoteAddr = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
+
     if (req.url !== "/ws") {
+      log("WS", "reject-url", { remote: remoteAddr, url: req.url });
       socket.destroy();
       return;
     }
     const key = req.headers["sec-websocket-key"];
     if (!key) {
+      log("WS", "reject-no-key", { remote: remoteAddr, url: req.url });
       socket.destroy();
       return;
     }
+
+    socket.remoteAddr = remoteAddr;
+    log("WS", "upgrade", {
+      remote: remoteAddr,
+      url: req.url,
+      origin: req.headers["origin"],
+      ua: req.headers["user-agent"],
+      xff: req.headers["x-forwarded-for"],
+    });
 
     acceptConnection(socket, key);
     clients.add(socket);
@@ -83,6 +120,10 @@ const setupWebSocketServer = (server) => {
     socket.on("data", (buffer) => {
       const frame = decodeFrame(buffer);
       if (frame.opcode === 0x8) {
+        log("WS", "close-frame", {
+          remote: socket.remoteAddr,
+          userId: socket.userId || null,
+        });
         cleanup(socket);
         socket.end();
         return;
@@ -92,8 +133,21 @@ const setupWebSocketServer = (server) => {
       }
     });
 
-    socket.on("close", () => cleanup(socket));
-    socket.on("error", () => cleanup(socket));
+    socket.on("close", () => {
+      log("WS", "close", {
+        remote: socket.remoteAddr,
+        userId: socket.userId || null,
+      });
+      cleanup(socket);
+    });
+    socket.on("error", (err) => {
+      log("WS", "error", {
+        remote: socket.remoteAddr,
+        userId: socket.userId || null,
+        msg: err && err.message,
+      });
+      cleanup(socket);
+    });
   });
 };
 

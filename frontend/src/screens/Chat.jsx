@@ -93,9 +93,31 @@ export default function Chat() {
 
   return (
     <div className="relative w-full min-h-[100dvh] md:min-h-[760px] flex flex-col lg:grid lg:grid-cols-[360px_1fr] lg:gap-0 bg-cream overflow-hidden">
-      {/* Desktop rail: partner + timer */}
+      {/* Desktop rail: big timer + big partner. NO back button (lives in column header). */}
       <aside className="hidden lg:flex flex-col items-center justify-between p-8 bg-gradient-to-b from-paper to-cream-deep/40 border-r border-ink/[0.06]">
-        <div className="w-full flex items-center gap-3">
+        <div className="w-full flex flex-col items-center text-center">
+          <div className="w-24 h-24 rounded-full bg-cream-deep flex items-center justify-center text-[60px] shadow-[var(--shadow-soft)]">
+            <span aria-hidden="true">{partner?.emoji}</span>
+          </div>
+          <div className="mt-3 display-italic text-[28px] text-ink leading-tight">
+            {partner?.name}
+          </div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold flex items-center gap-1.5 mt-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> in chat
+          </div>
+          {partner?.bio && (
+            <p className="mt-2 text-[12px] text-ink-mute italic max-w-[260px]">"{partner.bio}"</p>
+          )}
+        </div>
+        <Countdown mmss={mmss} progress={progress} urgent={urgent} expired={expired} size={240} />
+        <p className="text-[12px] uppercase tracking-[0.22em] text-ink-mute font-semibold text-center">
+          two minutes. make them count.
+        </p>
+      </aside>
+
+      {/* Right column: header + (mobile timer) + messages + keyboard */}
+      <section className="relative flex flex-col flex-1 min-h-0">
+        <header className="relative z-10 flex items-center gap-3 px-4 md:px-6 pt-4 pb-3 border-b border-ink/[0.06]">
           <button
             type="button"
             onClick={() => navigate('/feed')}
@@ -104,10 +126,10 @@ export default function Chat() {
           >
             ←
           </button>
-          <div className="w-11 h-11 rounded-full bg-cream-deep flex items-center justify-center text-[26px]">
+          <div className="lg:hidden w-11 h-11 rounded-full bg-cream-deep flex items-center justify-center text-[26px]">
             <span aria-hidden="true">{partner?.emoji}</span>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 lg:hidden">
             <div className="display-italic text-[20px] text-ink leading-tight truncate">
               {partner?.name}
             </div>
@@ -115,38 +137,12 @@ export default function Chat() {
               <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> in chat
             </div>
           </div>
-        </div>
-        <Countdown mmss={mmss} progress={progress} urgent={urgent} expired={expired} size={240} />
-        <p className="text-[12px] uppercase tracking-[0.22em] text-ink-mute font-semibold text-center">
-          two minutes. make them count.
-        </p>
-      </aside>
-
-      {/* Mobile header */}
-      <header className="lg:hidden relative z-10 flex items-center gap-3 px-4 pt-4 pb-3 border-b border-ink/[0.06]">
-        <button
-          type="button"
-          onClick={() => navigate('/feed')}
-          aria-label="Back to feed"
-          className="w-10 h-10 rounded-full bg-paper border border-ink/10 text-ink text-lg flex items-center justify-center focus-pink"
-        >
-          ←
-        </button>
-        <div className="w-11 h-11 rounded-full bg-cream-deep flex items-center justify-center text-[26px]">
-          <span aria-hidden="true">{partner?.emoji}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="display-italic text-[20px] text-ink leading-tight truncate">
-            {partner?.name}
+          {/* Desktop-only label */}
+          <div className="hidden lg:block text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
+            live match · {partner?.name}
           </div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> in chat
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Chat column */}
-      <section className="relative flex flex-col flex-1 min-h-0">
         {/* Mobile timer anchor */}
         <div className="lg:hidden relative z-10 flex flex-col items-center pt-5 pb-2">
           <Countdown
