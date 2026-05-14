@@ -12,9 +12,9 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(20, 0, 0, 0);
     return [
-      { id: 'in5',     label: 'En 5 min',       date: in5 },
-      { id: 'tonight', label: 'Esta noche 21:00', date: tonight },
-      { id: 'tomorrow', label: 'Mañana 20:00',  date: tomorrow },
+      { id: 'in5',      label: 'In 5 min',     date: in5 },
+      { id: 'tonight',  label: 'Tonight 9pm',  date: tonight },
+      { id: 'tomorrow', label: 'Tomorrow 8pm', date: tomorrow },
     ];
   }, [open]);
 
@@ -30,7 +30,7 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Programar cita de 2 minutos"
+      aria-label="Schedule 2-minute date"
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-ink/45 backdrop-blur-sm animate-[fade-up_0.2s_ease-out]"
       onClick={onClose}
     >
@@ -41,13 +41,13 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
-              match con {candidate?.name || '...'}
+              match with {candidate?.name || '…'}
             </div>
             <h3 className="display-italic text-[34px] leading-[0.95] text-ink mt-1">
-              ¿Cuándo nos <span className="text-pink">vemos?</span>
+              When do we <span className="text-pink">meet?</span>
             </h3>
             <p className="text-[13px] text-ink-soft mt-1">
-              dos minutos. solo emojis. sin presión.
+              two minutes. emojis only. no pressure.
             </p>
           </div>
           <div
@@ -69,7 +69,7 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
 
         <label className="mt-4 block">
           <span className="text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold">
-            o elige tú
+            or pick your own
           </span>
           <input
             type="datetime-local"
@@ -88,7 +88,7 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
             onClick={onClose}
             className="flex-1 py-3 rounded-2xl bg-cream-deep text-ink font-semibold focus-pink"
           >
-            Cancelar
+            Cancel
           </button>
           <button
             type="button"
@@ -96,7 +96,7 @@ export default function ScheduleModal({ open, candidate, onClose, onConfirm }) {
             disabled={!chosen || Number.isNaN(chosen?.getTime?.())}
             className="flex-1 py-3 rounded-2xl bg-ink text-cream font-semibold focus-pink disabled:opacity-40 disabled:cursor-not-allowed shadow-[var(--shadow-pop)]"
           >
-            Listo 🗓️
+            Lock it in 🗓️
           </button>
         </div>
       </div>

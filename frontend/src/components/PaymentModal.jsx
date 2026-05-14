@@ -19,7 +19,7 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
     await new Promise((r) => setTimeout(r, 700));
     if (!card || card.replace(/\s/g, '').length < 12) {
       setBusy(false);
-      setErr('Tarjeta inválida');
+      setErr('Invalid card');
       return;
     }
     setBusy(false);
@@ -30,7 +30,7 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Pagar para extender chat"
+      aria-label="Pay to extend chat"
       className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-ink/55 backdrop-blur-sm animate-[fade-up_0.2s_ease-out]"
       onClick={busy ? undefined : onClose}
     >
@@ -42,10 +42,10 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
         <div className="flex items-center justify-between">
           <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
-              extender chat
+              extend chat
             </div>
             <h3 className="display-italic text-[30px] text-ink leading-tight mt-1">
-              {amount} por <span className="text-pink">2 min más</span>
+              {amount} for <span className="text-pink">2 more min</span>
             </h3>
           </div>
           <div className="text-[34px] leading-none">💸</div>
@@ -54,7 +54,7 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
         <fieldset disabled={busy} className="mt-5 space-y-3">
           <label className="block">
             <span className="text-[11px] uppercase tracking-[0.16em] text-ink-mute font-semibold">
-              Número de tarjeta
+              Card number
             </span>
             <input
               inputMode="numeric"
@@ -67,12 +67,12 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
           <div className="flex gap-3">
             <label className="block flex-1">
               <span className="text-[11px] uppercase tracking-[0.16em] text-ink-mute font-semibold">
-                Vence
+                Expires
               </span>
               <input
                 value={exp}
                 onChange={(e) => setExp(e.target.value)}
-                placeholder="MM/AA"
+                placeholder="MM/YY"
                 className="mt-1 w-full rounded-xl bg-cream border border-ink/10 px-4 py-3 text-ink font-medium focus-pink"
               />
             </label>
@@ -104,18 +104,18 @@ export default function PaymentModal({ open, onClose, onSuccess, amount = '$0.99
             disabled={busy}
             className="flex-1 py-3 rounded-2xl bg-cream-deep text-ink font-semibold focus-pink disabled:opacity-50"
           >
-            Cancelar
+            Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
             className="flex-1 py-3 rounded-2xl bg-ink text-cream font-semibold focus-pink shadow-[var(--shadow-pop)] disabled:opacity-70 inline-flex items-center justify-center gap-2"
           >
-            {busy ? <Spinner /> : <>Pagar {amount}</>}
+            {busy ? <Spinner /> : <>Pay {amount}</>}
           </button>
         </div>
         <p className="mt-3 text-center text-[11px] text-ink-mute">
-          demo · ninguna tarjeta real será procesada
+          demo · no real card will be processed
         </p>
       </form>
     </div>

@@ -3,29 +3,29 @@
 // it is also the single source of truth for input validation and analytics.
 
 export const SAFE_EMOJIS = [
-  { char: '😊', id: 'happy',     label: 'feliz / saludo amistoso' },
-  { char: '😂', id: 'laughing',  label: 'me río / qué gracioso' },
-  { char: '🤔', id: 'thinking',  label: 'pensando / no estoy seguro' },
-  { char: '👍', id: 'thumbs_up', label: 'sí / de acuerdo' },
-  { char: '👎', id: 'thumbs_down', label: 'no / no me gusta' },
-  { char: '❤️', id: 'heart',     label: 'me encanta / te quiero' },
-  { char: '😢', id: 'sad',       label: 'triste / lo siento' },
-  { char: '😮', id: 'surprised', label: 'sorprendido / wow' },
-  { char: '🙏', id: 'please',    label: 'por favor / gracias' },
-  { char: '👋', id: 'wave',      label: 'hola / adiós' },
+  { char: '😊', id: 'happy',       label: 'happy' },
+  { char: '😂', id: 'laughing',    label: 'laugh' },
+  { char: '🤔', id: 'thinking',    label: 'thinking' },
+  { char: '👍', id: 'thumbs_up',   label: 'thumbs up' },
+  { char: '👎', id: 'thumbs_down', label: 'thumbs down' },
+  { char: '❤️', id: 'heart',       label: 'heart' },
+  { char: '😢', id: 'sad',         label: 'sad' },
+  { char: '😮', id: 'surprised',   label: 'surprise' },
+  { char: '🙏', id: 'please',      label: 'thanks' },
+  { char: '👋', id: 'wave',        label: 'wave' },
 ];
 
 export const SPICY_EMOJIS = [
-  { char: '😏', id: 'smirk',     label: 'sonrisa pícara / coqueteo' },
-  { char: '😉', id: 'wink',      label: 'guiño / indirecta' },
-  { char: '😘', id: 'kiss_face', label: 'beso / cariño' },
-  { char: '🥒', id: 'cucumber',  label: 'pepino' },
-  { char: '😍', id: 'heart_eyes', label: 'te ves increíble' },
-  { char: '🔥', id: 'fire',      label: 'estás ardiente' },
-  { char: '💋', id: 'kiss_mark', label: 'marca de beso' },
-  { char: '👀', id: 'eyes',      label: 'mirándote / fijándome' },
-  { char: '🫦', id: 'biting_lip', label: 'mordida de labio / sugerente' },
-  { char: '💦', id: 'droplets',  label: 'reacción picante' },
+  { char: '😏', id: 'smirk',       label: 'smirk' },
+  { char: '😉', id: 'wink',        label: 'wink' },
+  { char: '😘', id: 'kiss_face',   label: 'kiss' },
+  { char: '🥒', id: 'cucumber',    label: 'cucumber' },
+  { char: '😍', id: 'heart_eyes',  label: 'heart eyes' },
+  { char: '🔥', id: 'fire',        label: 'fire' },
+  { char: '💋', id: 'kiss_mark',   label: 'kiss mark' },
+  { char: '👀', id: 'eyes',        label: 'eyes' },
+  { char: '🫦', id: 'biting_lip',  label: 'bite lip' },
+  { char: '💦', id: 'droplets',    label: 'sweat drops' },
 ];
 
 export const EMOJI_KEYBOARD = [...SAFE_EMOJIS, ...SPICY_EMOJIS];

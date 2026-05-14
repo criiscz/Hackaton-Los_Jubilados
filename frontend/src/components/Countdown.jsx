@@ -18,7 +18,7 @@ export default function Countdown({ mmss, progress, urgent, expired, size = 220 
     <div className="relative inline-flex items-center justify-center">
       <div
         role="img"
-        aria-label={expired ? 'tiempo agotado' : `quedan ${mmss}`}
+        aria-label={expired ? "time's up" : `${mmss} remaining`}
         className={`rounded-full p-[14px] ${urgent ? 'animate-[heartbeat_1.1s_ease-in-out_infinite]' : ''}`}
         style={ringStyle}
       >
@@ -30,7 +30,7 @@ export default function Countdown({ mmss, progress, urgent, expired, size = 220 
             {mmss}
           </span>
           <span className="text-[10px] mt-2 uppercase tracking-[0.22em] text-ink-mute font-semibold">
-            {expired ? 'se acabó' : 'restante'}
+            {expired ? "time's up" : 'remaining'}
           </span>
         </div>
       </div>

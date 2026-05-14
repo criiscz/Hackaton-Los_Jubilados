@@ -4,6 +4,7 @@ import Chip from '../components/Chip';
 import EmojiPicker from '../components/EmojiPicker';
 import FloatingEmoji from '../components/FloatingEmoji';
 import { INTERESTS } from '../constants/interests';
+import { api } from '../api/client';
 
 const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -20,32 +21,96 @@ export default function Register() {
   const allValid = name.trim().length >= 2 && emailRx.test(email) && interest && emoji;
 
   const submit = (e) => {
-    e.preventDefault();
+    e && e.preventDefault();
     if (!allValid) return;
     try {
       sessionStorage.setItem(
         'matchmoji:profile',
         JSON.stringify({ name, email, interest, emoji }),
       );
+      sessionStorage.removeItem('matchmoji:demo');
     } catch {}
-    navigate('/');
+    navigate('/feed');
+  };
+
+  const tryDemo = async () => {
+    const profile = await api.demoLogin();
+    try {
+      sessionStorage.setItem('matchmoji:profile', JSON.stringify(profile));
+      sessionStorage.setItem('matchmoji:demo', '1');
+    } catch {}
+    navigate('/feed');
   };
 
   return (
-    <div className="relative w-full h-full overflow-y-auto bg-cream paper-grain">
+    <div className="relative w-full min-h-[100dvh] md:min-h-[760px] overflow-y-auto bg-cream paper-grain lg:grid lg:grid-cols-[1.1fr_1fr] lg:gap-0">
       <FloatingEmoji count={7} palette={['💗', '🔥', '🍑', '✨', '💋', '🫦', '🪩']} />
 
+      {/* Hero panel — visible lg+ on the left */}
+      <aside className="hidden lg:flex flex-col justify-between p-10 bg-gradient-to-br from-pink/8 via-coral/8 to-sunset/10 border-r border-ink/[0.06] relative z-10">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-ink-mute font-semibold">
+            <span className="inline-block w-2 h-2 rounded-full bg-pink" aria-hidden="true" /> new
+            profile
+          </div>
+          <h1 className="mt-4 display-italic text-[88px] leading-[0.88] text-ink">
+            Match<span className="text-pink">moji</span>
+            <span
+              aria-hidden="true"
+              className="inline-block ml-2 align-baseline text-[56px] rotate-[12deg] not-italic"
+              style={{ transformOrigin: 'bottom left' }}
+            >
+              🍑
+            </span>
+          </h1>
+          <p className="mt-4 text-[17px] text-ink-soft leading-snug max-w-[360px]">
+            Emojis only. Two minutes. Pure chemistry.
+          </p>
+          <ul className="mt-6 space-y-3 text-[15px] text-ink-soft">
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-0.5">✨</span> Sign up in under 30 seconds.
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-0.5">🔥</span> Pick a signature emoji — your
+              face in the app.
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-0.5">⏳</span> Match, schedule, chat for 120s.
+            </li>
+          </ul>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="self-start text-[13px] font-semibold text-ink/80 underline decoration-pink decoration-2 underline-offset-4 focus-pink rounded"
+        >
+          ← back to demo
+        </button>
+      </aside>
+
+      {/* Form panel */}
       <form
         onSubmit={submit}
-        className="relative z-10 max-w-[440px] mx-auto px-5 pt-10 pb-32"
+        className="relative z-10 w-full max-w-[460px] mx-auto px-5 md:px-8 pt-8 md:pt-12 pb-32 lg:pt-16 lg:pb-24 lg:max-w-[520px]"
         noValidate
       >
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-ink-mute font-semibold">
-          <span className="inline-block w-2 h-2 rounded-full bg-pink" aria-hidden="true" /> nuevo
-          perfil
+        {/* mobile-only header strip */}
+        <div className="lg:hidden flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-ink-mute font-semibold">
+            <span className="inline-block w-2 h-2 rounded-full bg-pink" aria-hidden="true" /> new
+            profile
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            aria-label="Back to the demo"
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink/80 underline decoration-pink decoration-2 underline-offset-4 focus-pink rounded"
+          >
+            ← demo
+          </button>
         </div>
 
-        <h1 className="mt-3 display-italic text-[64px] leading-[0.9] text-ink">
+        <h1 className="lg:hidden mt-3 display-italic text-[60px] md:text-[68px] leading-[0.9] text-ink">
           Match<span className="text-pink">moji</span>
           <span
             aria-hidden="true"
@@ -55,26 +120,34 @@ export default function Register() {
             🍑
           </span>
         </h1>
-        <p className="mt-3 text-[15px] text-ink-soft leading-snug">
-          Solo emojis. Solo 2 minutos. Solo química.
+        <p className="lg:hidden mt-3 text-[15px] text-ink-soft leading-snug">
+          Emojis only. Two minutes. Pure chemistry.
         </p>
 
+        <div className="hidden lg:flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-ink-mute font-semibold">
+          <span className="inline-block w-2 h-2 rounded-full bg-pink" aria-hidden="true" /> create
+          your profile
+        </div>
+        <h2 className="hidden lg:block mt-3 display-italic text-[36px] text-ink leading-tight">
+          Tell us who <span className="text-pink">you are</span>.
+        </h2>
+
         <div className="mt-7 space-y-5">
-          <Field label="¿Cómo te llamas?">
+          <Field label="Your name?">
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={32}
               autoComplete="given-name"
-              placeholder="Tu nombre"
+              placeholder="Your name"
               className="w-full rounded-2xl bg-paper border border-ink/10 px-4 py-3.5 text-ink text-[17px] font-medium focus-pink"
             />
           </Field>
 
           <Field
-            label="¿Tu email?"
-            hint={email && !emailValid && emailTouched ? 'Eso no parece un email' : null}
+            label="Your email?"
+            hint={email && !emailValid && emailTouched ? "That doesn't look like an email" : null}
             error={email && !emailValid && emailTouched}
           >
             <input
@@ -84,7 +157,7 @@ export default function Register() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => setEmailTouched(true)}
-              placeholder="tu@correo.com"
+              placeholder="you@email.com"
               className={`w-full rounded-2xl bg-paper border px-4 py-3.5 text-ink text-[17px] font-medium focus-pink ${
                 email && !emailValid && emailTouched ? 'border-danger' : 'border-ink/10'
               }`}
@@ -92,14 +165,14 @@ export default function Register() {
           </Field>
 
           <div>
-            <Label>¿Qué te gusta?</Label>
+            <Label>Who interests you?</Label>
             <div className="mt-2 flex flex-wrap gap-2">
               {INTERESTS.map((i) => (
                 <Chip
                   key={i.id}
                   active={interest === i.id}
                   onClick={() => setInterest(i.id)}
-                  ariaLabel={`prefiero ${i.label}`}
+                  ariaLabel={`into ${i.label}`}
                 >
                   <span aria-hidden="true">{i.emoji}</span> {i.label}
                 </Chip>
@@ -108,15 +181,17 @@ export default function Register() {
           </div>
 
           <div>
-            <Label>Tu emoji firma</Label>
+            <Label>Your signature emoji</Label>
             <p className="mt-1 text-[12px] text-ink-mute">
-              será tu identidad en la app. elige con cariño.
+              this is your identity in the app. pick with love.
             </p>
             <div className="mt-3 flex items-center gap-4">
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                aria-label={emoji ? `cambiar emoji firma (actual ${emoji})` : 'elegir emoji firma'}
+                aria-label={
+                  emoji ? `change signature emoji (current ${emoji})` : 'pick signature emoji'
+                }
                 className={`w-[96px] h-[96px] rounded-full flex items-center justify-center text-[54px] focus-pink transition-transform active:scale-95 ${
                   emoji
                     ? 'bg-cream-deep shadow-[var(--shadow-card)] ring-2 ring-pink/30'
@@ -128,36 +203,55 @@ export default function Register() {
               <div className="text-[13px] text-ink-soft">
                 {emoji ? (
                   <>
-                    perfecto. <br />
+                    perfect. <br />
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
                       className="underline font-semibold text-ink focus-pink rounded"
                     >
-                      cambiar
+                      change
                     </button>
                   </>
                 ) : (
                   <>
-                    toca el círculo para <br /> elegir el tuyo
+                    tap the circle to <br /> pick yours
                   </>
                 )}
               </div>
             </div>
           </div>
+
+          {/* CTA on desktop is inline; on mobile we use a sticky bar */}
+          <div className="hidden lg:flex items-center gap-3 pt-4">
+            <button
+              type="button"
+              onClick={tryDemo}
+              className="flex-1 py-3.5 rounded-2xl bg-cream-deep text-ink font-semibold focus-pink"
+            >
+              Just give me the demo
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!allValid}
+              className="flex-[1.3] py-3.5 rounded-2xl bg-ink text-cream font-semibold text-[17px] focus-pink shadow-[var(--shadow-pop)] disabled:opacity-40 disabled:cursor-not-allowed active:translate-y-[1px]"
+            >
+              Start matching ✨
+            </button>
+          </div>
         </div>
       </form>
 
-      {/* sticky CTA */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
-        <div className="max-w-[440px] mx-auto px-5 pb-[max(env(safe-area-inset-bottom),20px)]">
+      {/* Mobile sticky CTA */}
+      <div className="lg:hidden absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
+        <div className="max-w-[460px] mx-auto px-5 pb-[max(env(safe-area-inset-bottom),20px)]">
           <button
             type="button"
             onClick={submit}
             disabled={!allValid}
             className="pointer-events-auto w-full py-4 rounded-2xl bg-ink text-cream font-semibold text-[17px] focus-pink shadow-[var(--shadow-pop)] disabled:opacity-40 disabled:cursor-not-allowed active:translate-y-[1px]"
           >
-            Empezar a matchear ✨
+            Start matching ✨
           </button>
         </div>
       </div>

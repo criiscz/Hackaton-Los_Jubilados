@@ -5,23 +5,24 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 vi.mock('../api/client', () => {
   const match = {
     id: 'm1',
-    candidate: { id: 'c1', name: 'Luna', emoji: '🦋', interest: 'todes', labia: 80 },
+    candidate: { id: 'c1', name: 'Luna', emoji: '🦋', interest: 'everyone', rizz: 80 },
     when: new Date().toISOString(),
     status: 'scheduled',
   };
   const mockApi = {
+    demoLogin: vi.fn(() => Promise.resolve({})),
     getMatch: vi.fn(() => Promise.resolve(match)),
     sendMessage: vi.fn((id, emoji) =>
       Promise.resolve({ id: `srv_${emoji}`, sender: 'me', emoji, at: Date.now() }),
     ),
-    receivePartnerMessage: vi.fn(() => ({ id: 'p1', sender: 'them', emoji: '👋', at: Date.now() })),
+    subscribeToChat: vi.fn(() => () => {}),
     getCandidates: vi.fn(() => Promise.resolve([])),
     scheduleMatch: vi.fn(() => Promise.resolve(match)),
     getScheduled: vi.fn(() => Promise.resolve([])),
     getMessages: vi.fn(() => Promise.resolve([])),
     payExtend: vi.fn(() => Promise.resolve({ ok: true })),
   };
-  return { api: mockApi, mockApi };
+  return { api: mockApi, mockApi, DEMO_PROFILE: {} };
 });
 
 import Chat from '../screens/Chat';
@@ -40,36 +41,36 @@ function renderChat() {
 describe('Chat — emoji-only input enforcement', () => {
   it('has zero text inputs in the entire chat surface', async () => {
     const { container } = renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('textarea')).toBeNull();
     expect(container.querySelector('[contenteditable]')).toBeNull();
   });
 
-  it('renders the 10 safe-tab keys with aria-labels', async () => {
+  it('renders the 10 soft-tab keys with aria-labels', async () => {
     renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
     for (const e of SAFE_EMOJIS) {
-      expect(screen.getByLabelText(`enviar ${e.label}`)).toBeInTheDocument();
+      expect(screen.getByLabelText(`send ${e.label}`)).toBeInTheDocument();
     }
   });
 
   it('exposes the 10 spicy keys after switching tabs', async () => {
     renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /picantes/i }));
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /spicy/i }));
     for (const e of SPICY_EMOJIS) {
-      expect(screen.getByLabelText(`enviar ${e.label}`)).toBeInTheDocument();
+      expect(screen.getByLabelText(`send ${e.label}`)).toBeInTheDocument();
     }
   });
 
   it('appends an optimistic message row when an emoji key is tapped', async () => {
     renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
-    const heartBtn = screen.getByRole('button', { name: /enviar me encanta/i });
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
+    const heartBtn = screen.getByRole('button', { name: /send heart$/i });
     fireEvent.click(heartBtn);
     await waitFor(() =>
-      expect(screen.getByLabelText(/enviaste ❤️/)).toBeInTheDocument(),
+      expect(screen.getByLabelText(/you sent ❤️/)).toBeInTheDocument(),
     );
   });
 });

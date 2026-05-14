@@ -5,21 +5,24 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 vi.mock('../api/client', () => {
   const match = {
     id: 'm1',
-    candidate: { id: 'c1', name: 'Luna', emoji: '🦋', interest: 'todes', labia: 80 },
+    candidate: { id: 'c1', name: 'Luna', emoji: '🦋', interest: 'everyone', rizz: 80 },
     when: new Date().toISOString(),
     status: 'scheduled',
   };
   const mockApi = {
+    demoLogin: vi.fn(() => Promise.resolve({})),
     getMatch: vi.fn(() => Promise.resolve(match)),
-    sendMessage: vi.fn((id, emoji) => Promise.resolve({ id: `s_${emoji}`, sender: 'me', emoji, at: Date.now() })),
-    receivePartnerMessage: vi.fn(() => ({ id: 'p1', sender: 'them', emoji: '👋', at: Date.now() })),
+    sendMessage: vi.fn((id, emoji) =>
+      Promise.resolve({ id: `s_${emoji}`, sender: 'me', emoji, at: Date.now() }),
+    ),
+    subscribeToChat: vi.fn(() => () => {}),
     payExtend: vi.fn(() => Promise.resolve({ ok: true })),
     getCandidates: vi.fn(() => Promise.resolve([])),
     scheduleMatch: vi.fn(() => Promise.resolve(match)),
     getScheduled: vi.fn(() => Promise.resolve([])),
     getMessages: vi.fn(() => Promise.resolve([])),
   };
-  return { api: mockApi, mockApi };
+  return { api: mockApi, mockApi, DEMO_PROFILE: {} };
 });
 
 import Chat from '../screens/Chat';
@@ -45,38 +48,38 @@ describe('Chat — expiry + extend flow', () => {
 
   it('shows the ExtendChatCTA after 120s and hides the keyboard', async () => {
     renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
 
     act(() => {
       vi.advanceTimersByTime(121 * 1000);
     });
 
-    expect(await screen.findByText(/Se acabó el tiempo/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /enviar me encanta/i })).toBeNull();
+    expect(await screen.findByText(/Time's up/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send heart$/i })).toBeNull();
   });
 
   it('opens PaymentModal, submitting resets the timer and re-enables the keyboard', async () => {
     renderChat();
-    await waitFor(() => expect(screen.queryByLabelText('Volver al feed')).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText('Back to feed')).toBeInTheDocument());
 
     act(() => {
       vi.advanceTimersByTime(121 * 1000);
     });
 
-    const extendBtn = await screen.findByRole('button', { name: /Extender 2 min más/i });
+    const extendBtn = await screen.findByRole('button', { name: /Extend 2 more min/i });
     fireEvent.click(extendBtn);
 
-    expect(screen.getByRole('dialog', { name: /Pagar para extender chat/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Pagar/i }));
+    expect(screen.getByRole('dialog', { name: /Pay to extend chat/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Pay /i }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(800);
     });
 
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: /Pagar para extender chat/i })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: /Pay to extend chat/i })).toBeNull(),
     );
-    expect(screen.getByRole('button', { name: /enviar me encanta/i })).toBeInTheDocument();
-    expect(screen.queryByText(/Se acabó el tiempo/)).toBeNull();
+    expect(screen.getByRole('button', { name: /send heart$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Time's up/)).toBeNull();
   });
 });

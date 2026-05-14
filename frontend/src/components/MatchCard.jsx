@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import LabiaBadge from './LabiaBadge';
+import RizzBadge from './RizzBadge';
 import { useSwipe } from '../hooks/useSwipe';
 
 // Swipeable Tinder-style card with restrained sticker aesthetic:
@@ -59,9 +59,9 @@ export default function MatchCard({
 
       <div className="px-6 pt-6 pb-5">
         <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
-          <span>perfil #{String(index + 1).padStart(2, '0')}</span>
+          <span>profile #{String(index + 1).padStart(2, '0')}</span>
           <span className="inline-flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> en línea
+            <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> online
           </span>
         </div>
 
@@ -69,7 +69,7 @@ export default function MatchCard({
           <div
             className="relative w-[180px] h-[180px] rounded-full bg-cream flex items-center justify-center text-[120px] leading-none"
             style={{ boxShadow: 'inset 0 0 0 6px rgba(255,179,71,0.18)' }}
-            aria-label={`emoji firma ${candidate.emoji}`}
+            aria-label={`signature emoji ${candidate.emoji}`}
           >
             <span>{candidate.emoji}</span>
           </div>
@@ -80,16 +80,16 @@ export default function MatchCard({
             {candidate.name}
           </h2>
           <p className="mt-1 text-[13px] text-ink-soft">
-            quiere{' '}
-            <span className="font-semibold text-ink">
-              {candidate.interest === 'todes' ? 'a todes' : candidate.interest}
-            </span>
+            into <span className="font-semibold text-ink">{candidate.interest}</span>
           </p>
+          {candidate.bio && (
+            <p className="mt-2 text-[13px] text-ink-mute italic">"{candidate.bio}"</p>
+          )}
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <LabiaBadge score={candidate.labia} />
-          <div className="flex items-center gap-1 text-[22px]" aria-label="vibra reciente">
+          <RizzBadge score={candidate.rizz ?? candidate.labia ?? 0} />
+          <div className="flex items-center gap-1 text-[22px]" aria-label="recent vibe">
             {(candidate.vibe || []).slice(0, 3).map((v, i) => (
               <span key={i} className="opacity-80">
                 {v}
@@ -101,7 +101,7 @@ export default function MatchCard({
         <div className="mt-5 -mx-6 dotted-seam" aria-hidden="true" />
 
         <div className="mt-4 text-center text-[12px] text-ink-mute uppercase tracking-[0.18em] font-semibold">
-          desliza · toca · decide
+          swipe · tap · decide
         </div>
       </div>
 
@@ -118,7 +118,7 @@ export default function MatchCard({
           }`}
           style={{ opacity: Math.min(1, Math.abs(swipe.dx) / 120) }}
         >
-          {swipe.dx > 0 ? 'match!' : 'paso'}
+          {swipe.dx > 0 ? 'match!' : 'pass'}
         </div>
       )}
     </article>

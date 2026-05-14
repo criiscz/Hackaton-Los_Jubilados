@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { SAFE_EMOJIS, SPICY_EMOJIS } from '../constants/emojiKeyboard';
 
-// Chat input keyboard. Two tabs (Safe / Spicy). Tap = send instantly.
+// Chat input keyboard. Two tabs (Soft / Spicy). Tap = send instantly.
 // ONLY <button> keys — no <input>/<textarea>. This is the only input affordance.
 export default function EmojiKeyboard({ onSend, disabled = false }) {
-  const [tab, setTab] = useState('safe');
-  const list = tab === 'safe' ? SAFE_EMOJIS : SPICY_EMOJIS;
+  const [tab, setTab] = useState('soft');
+  const list = tab === 'soft' ? SAFE_EMOJIS : SPICY_EMOJIS;
 
   return (
     <div
@@ -13,8 +13,8 @@ export default function EmojiKeyboard({ onSend, disabled = false }) {
       aria-disabled={disabled}
     >
       <div className="flex items-center justify-center gap-2 pt-3 pb-1">
-        <KeyboardTab id="safe"  label="Suaves"     active={tab === 'safe'}  onClick={() => setTab('safe')} disabled={disabled} />
-        <KeyboardTab id="spicy" label="Picantes 🌶" active={tab === 'spicy'} onClick={() => setTab('spicy')} disabled={disabled} />
+        <KeyboardTab label="Soft"      active={tab === 'soft'}  onClick={() => setTab('soft')}  disabled={disabled} />
+        <KeyboardTab label="Spicy 🌶"   active={tab === 'spicy'} onClick={() => setTab('spicy')} disabled={disabled} />
       </div>
 
       <div
@@ -26,7 +26,7 @@ export default function EmojiKeyboard({ onSend, disabled = false }) {
           <button
             key={e.id}
             type="button"
-            aria-label={`enviar ${e.label}`}
+            aria-label={`send ${e.label}`}
             disabled={disabled}
             onClick={() => onSend(e)}
             className="aspect-square rounded-2xl bg-cream border border-ink/10 text-[30px] leading-none flex items-center justify-center focus-pink transition-transform active:scale-90 active:animate-[bounce-send_0.4s_cubic-bezier(0.2,0.9,0.3,1.2)] hover:border-pink/40"

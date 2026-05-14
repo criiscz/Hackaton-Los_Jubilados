@@ -1,8 +1,8 @@
 // Interest / preference chips for registration.
 export const INTERESTS = [
-  { id: 'hombres',    label: 'Hombres',    emoji: '👨' },
-  { id: 'mujeres',    label: 'Mujeres',    emoji: '👩' },
-  { id: 'todes',      label: 'Todes',      emoji: '🌈' },
-  { id: 'no-binarie', label: 'No-binarie', emoji: '✨' },
-  { id: 'otro',       label: 'Otro',       emoji: '🫧' },
+  { id: 'men',          label: 'Men',          emoji: '👨' },
+  { id: 'women',        label: 'Women',        emoji: '👩' },
+  { id: 'everyone',     label: 'Everyone',     emoji: '🌈' },
+  { id: 'non-binary',   label: 'Non-binary',   emoji: '✨' },
+  { id: 'other',        label: 'Other',        emoji: '🫧' },
 ];

@@ -1,18 +1,19 @@
 import React from 'react';
 
-// Desktop-only sunset gutter frame. On mobile (<768px) it's a pass-through.
-// Wraps the active screen inside a 420×900 "phone" surface on desktop with
-// a candy sunset gradient gutter behind it.
+// Responsive app shell.
+//   - Mobile (<md): full-bleed; the active screen owns the viewport.
+//   - Desktop (≥md): sunset gradient page bg; content sits inside a centered
+//     rounded surface (max 1100px) with soft shadow. No phone cage / no notch.
+//
+// Individual screens decide their own internal layout (single-column on
+// mobile, multi-column on desktop where it helps).
 export default function PhoneFrame({ children }) {
   return (
-    <div className="min-h-screen w-full md:bg-gradient-to-br md:from-pink md:via-coral md:to-sunset md:py-10 md:px-6">
-      <div className="relative mx-auto w-full max-w-full md:max-w-[420px] md:h-[900px] md:rounded-[44px] md:overflow-hidden md:shadow-[0_60px_120px_-40px_rgba(27,13,26,0.55)] md:ring-1 md:ring-black/10 bg-cream">
-        {/* desktop notch decoration */}
-        <div
-          aria-hidden="true"
-          className="hidden md:block absolute top-3 left-1/2 -translate-x-1/2 h-[22px] w-[110px] rounded-full bg-ink z-30"
-        />
-        <div className="relative h-screen md:h-full overflow-hidden">{children}</div>
+    <div className="min-h-screen w-full bg-cream md:bg-[radial-gradient(120%_120%_at_0%_0%,#FFB5D4_0%,#FF7A6B_42%,#FFB347_100%)] md:py-10 md:px-6 lg:py-14">
+      <div className="mx-auto w-full md:max-w-[1100px]">
+        <div className="relative w-full bg-cream md:rounded-[36px] md:overflow-hidden md:shadow-[0_60px_140px_-40px_rgba(27,13,26,0.55)] md:ring-1 md:ring-black/[0.06] min-h-[100dvh] md:min-h-[760px]">
+          {children}
+        </div>
       </div>
     </div>
   );
