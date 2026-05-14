@@ -14,21 +14,40 @@ export default function Chat() {
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [messages, setMessages] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     api.getMatch(matchId).then((m) => setMatch(m || null));
   }, [matchId]);
 
+  // Compute the scheduled start time. Until we hit it, the chat sits in a
+  // waiting room — no chat:join, no keyboard, no timer.
+  const scheduledAt = match && match.when ? new Date(match.when).getTime() : null;
+
   useEffect(() => {
     if (!match) return undefined;
+    if (!scheduledAt || scheduledAt <= Date.now()) {
+      setUnlocked(true);
+      return undefined;
+    }
+    setUnlocked(false);
+    const ms = scheduledAt - Date.now();
+    const t = setTimeout(() => setUnlocked(true), ms);
+    return () => clearTimeout(t);
+  }, [match, scheduledAt]);
+
+  // Only subscribe + join once unlocked.
+  useEffect(() => {
+    if (!match || !unlocked) return undefined;
+    setStartedAt(Date.now());
     const unsubscribe = api.subscribeToChat(matchId, (partnerMsg) => {
       setMessages((m) => [...m, partnerMsg]);
     });
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [match, matchId]);
+  }, [match, unlocked, matchId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -36,10 +55,10 @@ export default function Chat() {
     }
   }, [messages]);
 
-  const { mmss, progress, urgent, expired } = useCountdown(startedAt, 120);
+  const { mmss, progress, urgent, expired } = useCountdown(unlocked ? startedAt : null, 120);
 
   const send = (emojiEntry) => {
-    if (expired) return;
+    if (!unlocked || expired) return;
     const optimistic = {
       id: `tmp_${Date.now()}`,
       sender: 'me',
@@ -55,8 +74,9 @@ export default function Chat() {
     });
   };
 
-  const onPaySuccess = () => {
+  const onPaySuccess = async () => {
     setPayOpen(false);
+    await api.payExtend(matchId);
     setStartedAt(Date.now());
   };
 
@@ -90,6 +110,16 @@ export default function Chat() {
   }
 
   const partner = match.candidate;
+
+  if (!unlocked) {
+    return (
+      <WaitingRoom
+        partner={partner}
+        scheduledAt={scheduledAt}
+        onBack={() => navigate('/feed')}
+      />
+    );
+  }
 
   return (
     <div className="relative w-full min-h-[100dvh] md:min-h-[760px] flex flex-col lg:grid lg:grid-cols-[360px_1fr] lg:gap-0 bg-cream overflow-hidden">
@@ -137,7 +167,6 @@ export default function Chat() {
               <span className="w-1.5 h-1.5 rounded-full bg-mint" aria-hidden="true" /> in chat
             </div>
           </div>
-          {/* Desktop-only label */}
           <div className="hidden lg:block text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
             live match · {partner?.name}
           </div>
@@ -200,6 +229,99 @@ function MessageRow({ msg }) {
       >
         {msg.emoji}
       </span>
+    </div>
+  );
+}
+
+// Waiting room — visible while now < scheduledAt. The chat surface (keyboard,
+// timer, chat:join) only activates when the scheduled time arrives.
+function WaitingRoom({ partner, scheduledAt, onBack }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+
+  const remainingMs = Math.max(0, scheduledAt - now);
+  const remainingSec = Math.ceil(remainingMs / 1000);
+  const days = Math.floor(remainingSec / 86400);
+  const hours = Math.floor((remainingSec % 86400) / 3600);
+  const minutes = Math.floor((remainingSec % 3600) / 60);
+  const seconds = remainingSec % 60;
+
+  const long = remainingSec >= 3600;
+  const pad = (n) => String(n).padStart(2, '0');
+  const compact = long
+    ? `${days > 0 ? `${days}d ` : ''}${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(minutes)}:${pad(seconds)}`;
+
+  const when = new Date(scheduledAt);
+  const whenLabel = when.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <div className="relative w-full min-h-[100dvh] md:min-h-[760px] flex flex-col items-center justify-center text-center bg-cream paper-grain px-6 py-10">
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Back to feed"
+        className="absolute top-4 left-4 w-10 h-10 rounded-full bg-paper border border-ink/10 text-ink text-lg flex items-center justify-center focus-pink"
+      >
+        ←
+      </button>
+
+      <div className="text-[11px] uppercase tracking-[0.28em] text-ink-mute font-semibold">
+        chat locked until
+      </div>
+      <div className="display-italic text-[22px] text-ink mt-2">{whenLabel}</div>
+
+      <div className="mt-6 w-[200px] h-[200px] md:w-[240px] md:h-[240px] rounded-full bg-paper border border-ink/10 shadow-[var(--shadow-card)] flex flex-col items-center justify-center paper-grain relative">
+        <div className="text-[10px] uppercase tracking-[0.24em] text-ink-mute font-semibold">
+          starts in
+        </div>
+        <div
+          className="display-italic text-ink leading-none mt-1"
+          style={{ fontSize: long ? 36 : 56 }}
+        >
+          {compact}
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-ink-mute font-semibold mt-2">
+          {long ? `${days > 0 ? 'days·' : ''}h·m·s` : 'm:s'}
+        </div>
+      </div>
+
+      <div className="mt-8 flex items-center gap-3">
+        <div className="w-14 h-14 rounded-full bg-cream-deep flex items-center justify-center text-[32px]">
+          <span aria-hidden="true">{partner?.emoji || '💌'}</span>
+        </div>
+        <div className="text-left">
+          <div className="display-italic text-[22px] text-ink leading-tight">
+            {partner?.name || 'Match'}
+          </div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-ink-mute font-semibold">
+            waiting for the moment
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-6 text-[13px] text-ink-soft max-w-[320px]">
+        The keyboard, the timer and the actual session unlock exactly when the clock hits zero.
+        Come back early if you must — the door won't open a second sooner.
+      </p>
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-8 px-5 py-3 rounded-2xl bg-cream-deep text-ink font-semibold focus-pink"
+      >
+        Back to feed
+      </button>
     </div>
   );
 }

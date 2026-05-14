@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MatchCard from '../components/MatchCard';
 import ScheduleModal from '../components/ScheduleModal';
@@ -11,10 +11,13 @@ export default function Feed() {
   const [idx, setIdx] = useState(0);
   const [jiggling, setJiggling] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleTarget, setScheduleTarget] = useState(null); // a match record
   const [scheduled, setScheduled] = useState([]);
   const [pasteId, setPasteId] = useState('');
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [matchToast, setMatchToast] = useState(null);
+  const toastTimer = useRef(null);
 
   const auth = getAuth();
 
@@ -33,19 +36,24 @@ export default function Feed() {
     setProfile(saved || { name: auth.user?.name, emoji: auth.user?.profileEmoji });
   }, [auth.userId, auth.user, navigate]);
 
-  // Live-subscribe to backend candidate + scheduled lists + search heartbeat.
   useEffect(() => {
     const unsubC = api.subscribeCandidates(setCandidates);
     const unsubS = api.subscribeScheduled(setScheduled);
     const unsubSearch = subscribeSearching(setSearching);
+    const unsubMatch = api.subscribeNewMatch((record) => {
+      setMatchToast(record);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setMatchToast(null), 12000);
+    });
     return () => {
       unsubC && unsubC();
       unsubS && unsubS();
       unsubSearch && unsubSearch();
+      unsubMatch && unsubMatch();
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
 
-  // Keep idx within bounds.
   useEffect(() => {
     if (idx >= candidates.length && candidates.length > 0) {
       setIdx(Math.max(0, candidates.length - 1));
@@ -54,27 +62,50 @@ export default function Feed() {
 
   const current = candidates[idx];
   const next = candidates[idx + 1];
-
   const advance = () => setIdx((i) => i + 1);
 
-  const onPass = () => advance();
-
-  const onMatch = () => {
+  // Step 3 in the protocol: like → swipe sent. Card advances. No modal — the
+  // schedule prompt is only surfaced once the backend confirms a mutual match.
+  const onMatch = async () => {
+    if (!current) return;
     setJiggling(true);
+    await api.likeCandidate(current.id);
     setTimeout(() => {
       setJiggling(false);
-      setScheduleOpen(true);
-    }, 600);
+      advance();
+    }, 400);
   };
 
-  const onSchedule = async (when) => {
+  const onPass = async () => {
     if (!current) return;
-    setScheduleOpen(false);
-    await api.scheduleMatch({
-      candidateId: current.id,
-      when: when?.toISOString?.() || when,
-    });
+    await api.passCandidate(current.id);
     advance();
+  };
+
+  // Step 5: with a confirmed matchId, send chat:schedule.
+  const onSchedule = async (when) => {
+    if (!scheduleTarget) {
+      setScheduleOpen(false);
+      return;
+    }
+    setScheduleOpen(false);
+    await api.scheduleMatch(scheduleTarget.id, when?.toISOString?.() || when);
+    setScheduleTarget(null);
+  };
+
+  const openScheduleFor = (match) => {
+    setScheduleTarget(match);
+    setScheduleOpen(true);
+    setMatchToast(null);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  };
+
+  const onScheduledOpen = (m) => {
+    if (m.status === 'matched' && !m.when) {
+      openScheduleFor(m);
+    } else {
+      navigate(`/chat/${m.id}`);
+    }
   };
 
   const signOut = () => {
@@ -137,7 +168,7 @@ export default function Feed() {
           </div>
           <div className="flex items-center gap-2">
             <div className="lg:hidden">
-              <ScheduledStack scheduled={scheduled} onOpen={(m) => navigate(`/chat/${m.id}`)} />
+              <ScheduledStack scheduled={scheduled} onOpen={onScheduledOpen} />
             </div>
             <button
               type="button"
@@ -176,7 +207,7 @@ export default function Feed() {
         {/* card stack */}
         <main className="relative flex flex-col items-center justify-center px-5 pt-2 pb-[260px] md:pb-[240px] flex-1">
           {!current ? (
-            <EmptyState onAddId={addPasted} pasteId={pasteId} setPasteId={setPasteId} searching={searching} />
+            <EmptyState searching={searching} />
           ) : (
             <div className="relative w-full max-w-[340px] md:max-w-[380px] mx-auto">
               {next && (
@@ -200,7 +231,7 @@ export default function Feed() {
           )}
         </main>
 
-        {/* paste-by-id helper (always visible — backend has no directory yet) */}
+        {/* paste-by-id helper */}
         <PasteIdBar pasteId={pasteId} setPasteId={setPasteId} onAddId={addPasted} />
 
         {/* action bar */}
@@ -216,10 +247,10 @@ export default function Feed() {
               />
               <ActionButton
                 variant="match"
-                ariaLabel="Match with this person"
+                ariaLabel="Like — swipe right"
                 onClick={onMatch}
                 symbol="💗"
-                hint="match"
+                hint="like"
               />
             </div>
           </div>
@@ -230,18 +261,18 @@ export default function Feed() {
       <aside className="hidden lg:flex flex-col gap-4 p-6 border-l border-ink/[0.06] bg-gradient-to-b from-paper to-cream">
         <div>
           <div className="text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
-            your dates
+            your matches
           </div>
           <h3 className="display-italic text-[22px] text-ink leading-tight">Coming up</h3>
         </div>
-        <ScheduledList scheduled={scheduled} onOpen={(m) => navigate(`/chat/${m.id}`)} />
+        <ScheduledList scheduled={scheduled} onOpen={onScheduledOpen} />
         <div className="mt-auto rounded-2xl bg-cream-deep/70 p-4 paper-grain relative">
           <div className="text-[11px] uppercase tracking-[0.22em] text-ink-mute font-semibold">
             how it works
           </div>
           <ol className="mt-2 space-y-1.5 text-[13px] text-ink-soft list-decimal pl-4">
-            <li>Swipe or tap to match.</li>
-            <li>Pick a time. 2 minutes only.</li>
+            <li>Swipe or tap to like.</li>
+            <li>When they like back, schedule a 2-min chat.</li>
             <li>Chat in emojis. Pay to extend.</li>
           </ol>
         </div>
@@ -256,10 +287,21 @@ export default function Feed() {
 
       <ScheduleModal
         open={scheduleOpen}
-        candidate={current}
-        onClose={() => setScheduleOpen(false)}
+        candidate={scheduleTarget?.candidate}
+        onClose={() => {
+          setScheduleOpen(false);
+          setScheduleTarget(null);
+        }}
         onConfirm={onSchedule}
       />
+
+      {matchToast && (
+        <MatchToast
+          match={matchToast}
+          onSchedule={() => openScheduleFor(matchToast)}
+          onDismiss={() => setMatchToast(null)}
+        />
+      )}
     </div>
   );
 }
@@ -267,7 +309,12 @@ export default function Feed() {
 function EmptyState({ searching }) {
   return (
     <div className="text-center max-w-[340px] mx-auto py-10">
-      <div className={`text-[72px] ${searching ? 'animate-[heartbeat_1.4s_ease-in-out_infinite]' : ''}`} aria-hidden="true">
+      <div
+        className={`text-[72px] ${
+          searching ? 'animate-[heartbeat_1.4s_ease-in-out_infinite]' : ''
+        }`}
+        aria-hidden="true"
+      >
         {searching ? '📡' : '🌵'}
       </div>
       <h2 className="display-italic text-[28px] text-ink leading-tight mt-2">
@@ -355,7 +402,7 @@ function ScheduledStack({ scheduled, onOpen }) {
     <button
       type="button"
       onClick={() => visible[visible.length - 1] && onOpen(visible[visible.length - 1])}
-      aria-label="Open next scheduled chat"
+      aria-label="Open next match"
       className="flex items-center gap-2 bg-paper border border-ink/10 rounded-full pl-2 pr-3 py-1.5 focus-pink shadow-[var(--shadow-soft)]"
     >
       <span className="flex -space-x-2.5" aria-hidden="true">
@@ -370,7 +417,7 @@ function ScheduledStack({ scheduled, onOpen }) {
         ))}
       </span>
       <span className="text-[11px] uppercase tracking-[0.18em] text-ink font-semibold">
-        {scheduled.length} {scheduled.length === 1 ? 'date' : 'dates'}
+        {scheduled.length} {scheduled.length === 1 ? 'match' : 'matches'}
       </span>
     </button>
   );
@@ -380,8 +427,7 @@ function ScheduledList({ scheduled, onOpen }) {
   if (!scheduled?.length) {
     return (
       <p className="text-[13px] text-ink-mute">
-        No scheduled chats yet. Swipe right to start one — once both sides like, you'll see the
-        match here.
+        No matches yet. Swipe right on someone — when they like you back, you'll see them here.
       </p>
     );
   }
@@ -389,13 +435,22 @@ function ScheduledList({ scheduled, onOpen }) {
     <ul className="space-y-2">
       {scheduled.map((m) => {
         const when = m.when ? new Date(m.when) : null;
+        const needsSchedule = m.status === 'matched' && !m.when;
         return (
           <li key={m.id}>
             <button
               type="button"
               onClick={() => onOpen(m)}
-              aria-label={`Open chat with ${m.candidate?.name}`}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-paper border border-ink/10 hover:border-pink/40 focus-pink text-left transition-colors"
+              aria-label={
+                needsSchedule
+                  ? `Schedule chat with ${m.candidate?.name || 'match'}`
+                  : `Open chat with ${m.candidate?.name || 'match'}`
+              }
+              className={`w-full flex items-center gap-3 p-3 rounded-2xl border focus-pink text-left transition-colors ${
+                needsSchedule
+                  ? 'bg-mint/15 border-mint/40 hover:border-mint'
+                  : 'bg-paper border-ink/10 hover:border-pink/40'
+              }`}
             >
               <span
                 aria-hidden="true"
@@ -408,8 +463,8 @@ function ScheduledList({ scheduled, onOpen }) {
                   {m.candidate?.name || 'Match'}
                 </div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-ink-mute font-semibold">
-                  {m.status === 'pending'
-                    ? 'pending mutual like'
+                  {needsSchedule
+                    ? '🎉 it\'s a match — schedule →'
                     : when
                     ? when.toLocaleString(undefined, {
                         month: 'short',
@@ -417,7 +472,7 @@ function ScheduledList({ scheduled, onOpen }) {
                         hour: '2-digit',
                         minute: '2-digit',
                       })
-                    : 'soon'}
+                    : 'scheduled'}
                 </div>
               </div>
               <span aria-hidden="true" className="text-ink-mute">
@@ -428,5 +483,47 @@ function ScheduledList({ scheduled, onOpen }) {
         );
       })}
     </ul>
+  );
+}
+
+function MatchToast({ match, onSchedule, onDismiss }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="absolute top-3 left-1/2 -translate-x-1/2 z-40 max-w-[440px] w-[calc(100%-24px)] bg-paper border border-mint rounded-2xl shadow-[var(--shadow-card)] paper-grain animate-[sheet-up_0.32s_cubic-bezier(0.2,0.9,0.3,1.2)]"
+    >
+      <div className="flex items-center gap-3 p-3">
+        <span
+          aria-hidden="true"
+          className="w-12 h-12 rounded-full bg-cream-deep flex items-center justify-center text-[28px]"
+        >
+          {match?.candidate?.emoji || '💌'}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-mint-deep font-semibold">
+            it's a match 🎉
+          </div>
+          <div className="display-italic text-[20px] text-ink leading-tight truncate">
+            {match?.candidate?.name || 'Match'} liked you back
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onSchedule}
+          className="px-3 py-2 rounded-xl bg-ink text-cream text-[13px] font-semibold focus-pink shadow-[var(--shadow-soft)]"
+        >
+          schedule →
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss match notification"
+          className="w-9 h-9 rounded-full bg-cream-deep text-ink text-lg flex items-center justify-center focus-pink"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
   );
 }

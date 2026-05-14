@@ -310,10 +310,12 @@ const harvestUsers = (val) => {
   }
 };
 
-// Probe the backend for any directory-style list. Harmless if unsupported.
+// Hit the real backend handlers for current candidates + matches. Both require
+// auth (the socket must have userId set via register or auth).
 const probeDiscovery = () => {
   if (!session.userId) return;
-  ['users:list', 'feed:list', 'candidates:list', 'users', 'feed'].forEach((t) => ws.send(t));
+  ws.send('discover:list', { limit: 30 });
+  ws.send('matches:list');
 };
 
 // Continuous candidate search — runs while the user is signed in. Hammers
@@ -363,10 +365,10 @@ const stopCandidateSearch = () => {
 // the token, or after register:ok writes it).
 if (inBrowser && session.userId) startCandidateSearch();
 
-// Sweep every inbound frame for user-like arrays and capture them.
+// Sweep every inbound frame for user-like arrays — also handles ad-hoc fields.
 ws.subscribeAll((m) => {
   if (!m || typeof m !== 'object') return;
-  ['users', 'feed', 'candidates', 'list', 'data', 'items'].forEach((k) => {
+  ['profiles', 'users', 'feed', 'candidates', 'list', 'data', 'items'].forEach((k) => {
     if (m[k]) {
       const before = state.candidatesById.size;
       harvestUsers(m[k]);
@@ -375,19 +377,31 @@ ws.subscribeAll((m) => {
   });
 });
 
-ws.subscribe('register:ok', (m) => {
-  // Backend may include a feed array alongside the user record.
-  if (m.feed) {
-    harvestUsers(m.feed);
-    notifyCandidates();
+// Real candidate list response.
+ws.subscribe('discover:list', (m) => {
+  if (Array.isArray(m.profiles)) {
+    const before = state.candidatesById.size;
+    harvestUsers(m.profiles);
+    if (state.candidatesById.size !== before) notifyCandidates();
   }
+});
+
+// On register, kick off discovery and re-auth on future reconnects.
+ws.subscribe('register:ok', () => {
   startCandidateSearch();
 });
 
-ws.subscribe('hello', (m) => {
-  if (m.users) harvestUsers(m.users);
-  if (m.feed) harvestUsers(m.feed);
-  notifyCandidates();
+ws.subscribe('auth:ok', () => {
+  // Token replay succeeded — restart the discovery loop.
+  startCandidateSearch();
+});
+
+ws.subscribe('hello', () => {
+  // Backend asks for auth on every fresh connection. If we already have a
+  // token in session, replay it so AUTHED endpoints (discover:list etc.) work.
+  if (session.token) {
+    ws.send('auth', { token: session.token });
+  }
 });
 
 // Reconnect → resume continuous search.
@@ -399,35 +413,53 @@ subscribeConnection(({ status }) => {
 const newMatchListeners = new Set();
 const notifyNewMatch = (record) => newMatchListeners.forEach((fn) => fn(record));
 
-// Match event → add to scheduled list (as a pending match awaiting schedule).
-ws.subscribe('match', (m) => {
-  const match = m.match || m;
-  const matchId = match.matchId || match.id;
+// Upsert a match record from any of the shapes the backend uses.
+const ingestMatch = ({ matchId, user, when, announce }) => {
   if (!matchId) return;
-  // Try to attach a candidate record we already know about.
-  const otherId = match.users?.find?.((u) => u !== session.userId) || match.targetId;
+  const fresh = !state.matchesById.has(matchId);
   const candidate =
-    (otherId && state.candidatesById.get(otherId)) ||
-    normalizeUser(match.target || match.user || {}) ||
-    {
-      id: otherId || matchId,
-      name: 'Match',
-      emoji: '✨',
+    (user && (state.candidatesById.get(user.id || user._id) || normalizeUser(user))) ||
+    (state.matchesById.get(matchId)?.candidate) || {
+      id: user?.id || user?._id || matchId,
+      name: user?.name || 'Match',
+      emoji: user?.profileEmoji || '✨',
       interest: 'everyone',
       rizz: 70,
       vibe: [],
-      bio: '',
+      bio: user?.description || '',
     };
-  const fresh = !state.matchesById.has(matchId);
+  const existing = state.matchesById.get(matchId);
   const record = {
     id: matchId,
     candidate,
-    when: null,
-    status: 'matched',
+    when: when ?? existing?.when ?? null,
+    status: existing?.status === 'scheduled' ? 'scheduled' : 'matched',
+    sessionId: existing?.sessionId,
   };
   state.matchesById.set(matchId, record);
   notifyScheduled();
-  if (fresh) notifyNewMatch(record);
+  if (announce && fresh) notifyNewMatch(record);
+};
+
+// I swiped like → backend confirms; if the other side already liked me, the
+// response carries the match record.
+ws.subscribe('swipe:ok', (m) => {
+  if (m.match && m.match.matchId) {
+    ingestMatch({ matchId: m.match.matchId, user: m.match.user, announce: true });
+  }
+});
+
+// Someone else liked me back after I'd liked them.
+ws.subscribe('match:new', (m) => {
+  ingestMatch({ matchId: m.matchId, user: m.user, announce: true });
+});
+
+// Backend list of all matches involving this user.
+ws.subscribe('matches:list', (m) => {
+  if (!Array.isArray(m.matches)) return;
+  for (const entry of m.matches) {
+    ingestMatch({ matchId: entry.matchId, user: entry.user, announce: false });
+  }
 });
 
 ws.subscribe('chat:scheduled', (m) => {
@@ -473,7 +505,7 @@ ws.subscribe('chat:expired', (m) => {
 // Extract a sender id whether the backend serializes it as a string, a Mongo
 // ObjectId, or a nested user object.
 const extractSenderId = (m) => {
-  const raw = m.sender ?? m.userId ?? m.from ?? null;
+  const raw = m.from ?? m.sender ?? m.userId ?? null;
   if (!raw) return null;
   if (typeof raw === 'object') return raw.id || raw._id || null;
   return raw;
@@ -484,12 +516,14 @@ ws.subscribe('chat:message', (m) => {
   if (!sid) return;
 
   const senderId = extractSenderId(m);
-  const mine = senderId && String(senderId) === String(session.userId);
+  // The backend marks our own echoes with `self: true`; fall back to id check.
+  const mine =
+    m.self === true || (senderId && String(senderId) === String(session.userId));
   const msg = {
-    id: m.id || m._id || `srv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: m.messageId || m.id || m._id || `srv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     sender: mine ? 'me' : 'them',
     emoji: m.emoji,
-    at: m.at || Date.now(),
+    at: m.sentAt ? new Date(m.sentAt).getTime() : m.at || Date.now(),
   };
 
   // The UI may have subscribed under EITHER the backend matchId or the
@@ -552,53 +586,30 @@ export const realApi = {
     return state.candidatesById.get(id) || null;
   },
 
-  async scheduleMatch({ candidateId, when }) {
-    // Step 1: swipe like.
+  // Step 3 in the protocol: just send a swipe. The `match` event arrives via
+  // ws.subscribe('match') when the other side reciprocates.
+  async likeCandidate(candidateId) {
+    if (!candidateId) return;
     wsApi.swipe({ targetId: candidateId, action: 'like' });
+  },
 
+  async passCandidate(candidateId) {
+    if (!candidateId) return;
+    wsApi.swipe({ targetId: candidateId, action: 'pass' });
+  },
+
+  // Step 5 in the protocol: schedule an already-matched pair. Caller passes
+  // the matchId from the `match` event (or from `state.matchesById`).
+  async scheduleMatch(matchId, when) {
+    if (!matchId) return null;
     const iso = typeof when === 'string' ? when : when?.toISOString?.() || new Date().toISOString();
+    wsApi.scheduleChat({ matchId, scheduledAt: iso });
+    return state.matchesById.get(matchId) || null;
+  },
 
-    // Step 2: wait briefly for a `match` from the backend so we have a matchId
-    // to schedule. If the other side hasn't liked us yet, we surface a
-    // "pending" record locally so the UI can show the swipe registered.
-    const matchId = await new Promise((resolve) => {
-      const to = setTimeout(() => {
-        unsub();
-        resolve(null);
-      }, 1200);
-      const unsub = ws.subscribe('match', (m) => {
-        const mm = m.match || m;
-        const id = mm.matchId || mm.id;
-        if (id) {
-          clearTimeout(to);
-          unsub();
-          resolve(id);
-        }
-      });
-    });
-
-    if (matchId) {
-      wsApi.scheduleChat({ matchId, scheduledAt: iso });
-      return state.matchesById.get(matchId) || {
-        id: matchId,
-        candidate: state.candidatesById.get(candidateId) || null,
-        when: iso,
-        status: 'scheduled',
-      };
-    }
-
-    // No mutual like yet — record a pending entry locally so the user sees
-    // their swipe didn't disappear. Not persisted; backend is the truth.
-    const pendingId = `pending_${candidateId}_${Date.now()}`;
-    const pending = {
-      id: pendingId,
-      candidate: state.candidatesById.get(candidateId) || null,
-      when: iso,
-      status: 'pending',
-    };
-    state.matchesById.set(pendingId, pending);
-    notifyScheduled();
-    return pending;
+  subscribeNewMatch(fn) {
+    newMatchListeners.add(fn);
+    return () => newMatchListeners.delete(fn);
   },
 
   async getScheduled() {
@@ -673,8 +684,13 @@ const mockApi = {
   async getCandidate() {
     return null;
   },
+  async likeCandidate() {},
+  async passCandidate() {},
   async scheduleMatch() {
-    return { id: 'test_match', candidate: null, when: null, status: 'pending' };
+    return null;
+  },
+  subscribeNewMatch() {
+    return () => {};
   },
   async getScheduled() {
     return [];

@@ -6,7 +6,8 @@ vi.mock('../api/client', () => {
   const match = {
     id: 'm1',
     candidate: { id: 'c1', name: 'Luna', emoji: '🦋', interest: 'everyone', rizz: 80 },
-    when: new Date().toISOString(),
+    // Anchor before vi.setSystemTime targets so the waiting-room gate is open.
+    when: '2000-01-01T00:00:00.000Z',
     status: 'scheduled',
   };
   const mockApi = {
