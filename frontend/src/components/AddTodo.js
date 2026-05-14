@@ -22,9 +22,14 @@ export default class AddTodo extends React.Component {
           name="value"
           required
           minLength={1}
+          disabled={this.props.disabled}
           className="form-control"
         />
-        <button className="btn btn-primary" type="submit">
+        <button
+          className="btn btn-primary"
+          disabled={this.props.disabled}
+          type="submit"
+        >
           Add Todo
         </button>
       </form>

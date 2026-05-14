@@ -7,6 +7,7 @@ services:
       - "${FRONTEND_PORT:-4000}:${FRONTEND_PORT:-4000}"
     environment:
       - PORT=${FRONTEND_PORT:-4000}
+      - REACT_APP_WS_PORT=${BACKEND_PORT:-3000}
       - DANGEROUSLY_DISABLE_HOST_CHECK=true
       - WDS_SOCKET_PORT=0
     stdin_open: true
@@ -24,28 +25,16 @@ services:
     build:
       context: backend
       target: development
+    environment:
+      - MONGODB_URI=${MONGODB_URI:-mongodb://38.210.96.132:9098/TodoApp}
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules
-    depends_on:
-      - mongo
     networks:
-      - express-mongo
       - react-express
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
     expose:
       - 3000
-  mongo:
-    restart: always
-    image: mongo:4.2.0
-    volumes:
-      - mongo_data:/data/db
-    networks:
-      - express-mongo
-    expose:
-      - 27017
 networks:
   react-express:
-  express-mongo:
-
-volumes:
-  mongo_data:
