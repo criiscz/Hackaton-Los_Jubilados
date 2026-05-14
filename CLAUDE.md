@@ -4,153 +4,110 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Hackaton-Los_Jubilados** is a React + Node.js + MongoDB todo application. It features:
-- React 17 frontend (Create React App) with Bootstrap 5 styling
-- Express.js backend serving REST API
-- MongoDB database via Mongoose ODM
-- Docker Compose orchestration for local development
+**Matchmoji** is a dating app where users can only communicate using emojis. Core rules:
 
-The application demonstrates a clean separation of concerns with frontend UI handling todo display/input, backend exposing `/api` and `/api/todos` endpoints, and MongoDB persisting todo documents.
+- Users register with name, email, interest/preference, and a personal emoji.
+- Main feed shows match cards (swipe-style match / no-match decisions).
+- When two users match, they schedule a time to start the chat.
+- Chats last **2 minutes**. Extending the chat requires a payment.
+- During chat, the only input is an on-screen emoji keyboard (10–20 emojis). No letters, numbers, or symbols are allowed.
+- The platform includes a recommendation engine and a "labia" (charisma) rating system based on emoji conversations.
+
+Stack: React 18 frontend (Vite + `@vitejs/plugin-react`) + Express.js backend + MongoDB (Mongoose), orchestrated by Docker Compose. The original scaffold was a CRA todo demo; it has been migrated to Vite and is being rebuilt as the Matchmoji product.
+
+## Hard Constraints (non-negotiable)
+
+1. **WebSocket-only transport.** All frontend ↔ backend communication MUST go over a WebSocket connection. Do NOT add or use REST endpoints (no `axios.get('/api/...')`, no `fetch('/api/...')`). The Express server exposes a single WS endpoint; client sends typed messages and listens for server pushes. The existing `/api/todos` routes and any leftover REST scaffolding are deprecated and must be removed as features are ported.
+2. **Demo mode is mandatory.** The product must ship with a `?demo=1` (or `/demo` route) entry point that boots with believable seeded data — profiles, matches, an in-progress chat — and requires no registration, no backend, and no payment. The demo must be usable end-to-end (browse feed, "match", open a chat with a fake counterpart that responds with scripted emoji replies) so anyone can be shown the product cold.
+3. **English only.** All UI copy, microcopy, labels, error messages, placeholders, and meta tags must be in English. No Spanish strings anywhere in the shipped product. Internal code/comments stay in English too. Existing Spanish copy in `frontend/index.html`, screen files, and emoji `label` fields must be translated before merge.
 
 ## Quick Start
 
-### Development with Docker Compose
+### Docker Compose (recommended)
 
 ```bash
 docker compose up -d
 ```
 
-This starts three services:
-- **frontend**: React dev server on `http://localhost:4000` (configurable via `FRONTEND_PORT` env var, defaults to 4000)
-- **backend**: Express server on `http://backend:3000` (internal), exposed via frontend proxy
-- **mongo**: MongoDB reachable only inside compose network (no host port binding)
+Services:
+- **frontend**: React dev server on `http://localhost:4000` (override with `FRONTEND_PORT`).
+- **backend**: Express server, container-internal port 3000, proxied by the frontend.
+- **mongo**: MongoDB, container-internal only (no host port binding).
 
-All services have hot-reload via volume mounts. Logs available via `docker compose logs -f <service>`.
+Hot reload via volume mounts. Logs: `docker compose logs -f <service>`. Tear down: `docker compose down`.
 
-Stop and clean up:
-```bash
-docker compose down
-```
+### Local (without Docker)
 
-### Local Development (without Docker)
-
-**Backend:**
+Backend:
 ```bash
 cd backend
 npm install
-npm run dev          # Start with nodemon (watches file changes)
-npm start            # Start production server
-npm run lint         # Check code formatting with Prettier
-npm run format       # Auto-format code with Prettier
+npm run dev          # nodemon
+npm start            # production
+npm run lint         # prettier --check
+npm run format       # prettier --write
 ```
 
-**Frontend:**
+Frontend:
 ```bash
 cd frontend
 npm install
-npm start            # Start on PORT 3000 (configurable)
-npm test             # Run Jest tests
-npm run build        # Production build to /build
+npm run dev          # Vite dev server with HMR (PORT env var; defaults to 4000)
+npm start            # alias of npm run dev
+npm run build        # production build to /build
+npm run preview      # serve the production build locally
 ```
 
-Backend defaults to port 3000; frontend CRA also defaults to 3000 — set `PORT` to avoid collision when running both locally without Docker. Update frontend's `package.json` proxy if backend runs elsewhere.
+Backend listens on 3000; Vite defaults to 4000. The CRA `proxy` field has been replaced by `server.proxy` in [frontend/vite.config.js](frontend/vite.config.js). Change the proxy target there if the backend runs elsewhere.
 
 ## Architecture
 
-### Backend Structure (`backend/`)
+### Backend (`backend/`)
 
-**Entry Point:** `server.js`
-- Loads config from `config/config.js` (sets env vars from `config/config.json` based on `NODE_ENV`)
-- Initializes Express app with CORS, body-parser, cookie-parser middleware
-- Connects to MongoDB via `db/index.js` (Mongoose with retry logic)
-- Registers routes from `routes/index.js`
-- Emits "ready" event once DB connected; server listens on port 3000
+Entry: `server.js`. Loads config from `config/config.js` (env vars from `config/config.json` keyed by `NODE_ENV`), wires Express with `cors`, `body-parser`, `cookie-parser`, connects to Mongo via `db/index.js` (2s reconnect loop), registers routes from `routes/index.js`, emits a `ready` event once DB is up, listens on port 3000.
 
-**Key Files:**
-- `config/config.json`: Environment-specific MONGODB_URI and PORT
-- `config/messages.js`: Standardized HTTP response messages (200, 400, 401, 403, 404, 422, 500)
-- `db/index.js`: Mongoose connection with auto-reconnect (2s retry interval)
-- `routes/index.js`: API routes (GET `/api`, POST `/api/todos`)
-- `models/todos/todo.js`: Mongoose schema for todo documents (text field required)
-- `utils/helpers/responses.js`: Response formatting helpers (sendSuccess, sendError)
-- `utils/helpers/logger.js`: Logging utilities
-- `.dockerignore`, `Dockerfile`: Development-stage container (runs `npm run dev`)
+Key files (current scaffold — to be rewritten for Matchmoji domain):
+- `config/messages.js`: standardized response/error strings.
+- `db/index.js`: Mongoose connection with auto-reconnect.
+- `routes/index.js`: legacy REST (`GET /api`, `POST /api/todos`) — **delete**, replaced by a single WS endpoint per the hard constraint.
+- `models/todos/todo.js`: legacy Todo schema (to be replaced by User, Match, Chat, Message models).
+- `utils/helpers/responses.js`: `sendSuccess` / `sendError` — adapt to WS message envelopes.
 
-**API Contract:**
-- `GET /api`: Returns all todos (`{success: true, data: [...]}`), uses response helper
-- `POST /api/todos`: Creates todo from `{text: "..."}` body, returns created document
-- Responses use standardized format from `config/messages.js`
+**Transport — WebSocket only:**
+- Single WS endpoint (e.g. `ws://backend:3000/ws`). All traffic is JSON frames: `{ type, payload, id? }`.
+- Suggested message types: `auth`, `feed:next`, `swipe`, `match:scheduled`, `chat:join`, `chat:send`, `chat:tick`, `chat:expired`, `payment:extend`.
+- Errors are pushed as `{ type: 'error', code, message }` using strings from `config/messages.js`.
+- No REST routes may be added.
 
-### Frontend Structure (`frontend/src/`)
+### Frontend (`frontend/`)
 
-**Entry:** `index.js` → `App.js`
+Vite 5 + React 18 + Tailwind v4 + SCSS tokens + `react-router-dom`. Dev WS proxy (`/ws → ws://backend:3000`) belongs in [frontend/vite.config.js](frontend/vite.config.js) — Axios is no longer needed and should be removed. See [frontend/CLAUDE.md](frontend/CLAUDE.md) for screens, UX rules, demo-mode behavior, and design guidance.
 
-**App.js** (class component):
-- State: `{todos: []}`
-- Lifecycle: `componentDidMount()` fetches todos via `GET /api`
-- Methods: `handleAddTodo(value)` posts to `POST /api/todos`, updates local state
-- UI: Bootstrap grid layout with `<AddTodo>` and `<TodoList>` subcomponents
+## Domain Model (target)
 
-**Components:**
-- `AddTodo.js`: Form with text input, validates non-empty, calls parent handler
-- `TodoList.js`: Renders todo list from props
+Entities expected as the product evolves:
+- **User**: name, email, interest, signature emoji, labia rating.
+- **Match**: pair of users + scheduled start time + status (`pending`, `scheduled`, `active`, `expired`, `extended`).
+- **Chat**: tied to a Match, with `startedAt`, `duration` (default 120s), `extended` flag.
+- **Message**: chat id, sender id, single emoji, timestamp.
+- **Payment**: chat id, user id, amount, status — gates chat extensions.
 
-**Build Setup:**
-- React Scripts 5.0.0 (Create React App)
-- Proxy: `http://backend:3000` (in `package.json`, routes API calls to backend)
-- Styles: SCSS (custom.scss, App.scss, index.css) + Bootstrap 5
-- HTTP Client: Axios
+WS contract is not yet implemented for Matchmoji; the existing `/api/todos` routes are placeholder and will be deleted with the WS rewrite.
 
 ## Docker Compose Networking
 
-Two networks connect the services:
-- `react-express`: frontend ↔ backend
-- `express-mongo`: backend ↔ mongo
+Networks: `react-express` (frontend ↔ backend) and `express-mongo` (backend ↔ mongo). Frontend connects to the backend WebSocket via `ws://backend:3000/ws` (proxied through Vite in dev). Backend connects to Mongo via `mongo:27017`. Only the frontend's port is host-bound; backend (3000) and mongo (27017) are container-internal via compose `expose`.
 
-Frontend proxies API requests to backend via service hostname `http://backend:3000` (defined in `package.json` proxy). Backend connects to MongoDB via hostname `mongo:27017`. Only frontend's port is bound to the host. Backend (3000) and mongo (27017) are container-internal via compose `expose`.
+## Conventions
 
-## Dependencies & Configuration
+- Backend formatting: Prettier (`npm run lint` / `npm run format`).
+- Frontend: function components with hooks. React 18 `createRoot`. Router wired in [frontend/src/App.jsx](frontend/src/App.jsx).
+- Standardized WS responses via `utils/helpers/responses.js` and `config/messages.js`.
+- All shipped strings are English (see Hard Constraint #3).
+- Hot reload in Docker via volume mounts; no manual restart needed.
 
-**Backend:**
-- `express`: HTTP server
-- `mongoose`: MongoDB ODM with Mongoose connection
-- `cors`, `body-parser`, `cookie-parser`: Middleware
-- `bcryptjs`, `validator`, `lodash`: Utilities
-- `nodemon`, `prettier`: Dev tools
+## Notes
 
-**Frontend:**
-- `react` 17, `react-dom`: UI framework
-- `axios`: HTTP client
-- `bootstrap`, `sass`: Styling
-- `react-scripts` 5: Build tool (Create React App)
-
-**Environment Variables:**
-- Backend: `NODE_ENV` (dev/test, default dev), `PORT` (3000), `MONGODB_URI` (from config.json)
-- Frontend: `PORT` (from compose.yaml, defaults 4000), `DANGEROUSLY_DISABLE_HOST_CHECK`, `WDS_SOCKET_PORT`
-
-## Testing
-
-**Frontend:**
-```bash
-cd frontend
-npm test                           # Interactive Jest runner
-npm test -- --watchAll=false      # Single run
-```
-
-**Backend:** No test suite configured currently. Tests can be added via Jest or Mocha.
-
-## Key Architectural Patterns
-
-1. **Layered Backend**: Config → Middleware → Routes → Models → DB
-2. **Class Components + Axios**: Frontend uses React class components with direct Axios calls (no state management library)
-3. **Mongoose ODM**: Single model (Todo) with minimal schema
-4. **Standardized Responses**: All API responses use `messages.js` constants for consistency
-5. **Hot Reload**: Both frontend and backend support live reload in Docker via volume mounts and nodemon/react-scripts
-
-## Notes for Future Development
-
-- Frontend lacks global state management; prop drilling may become unwieldy as component tree grows
-- Backend has minimal error handling beyond message constants; consider adding request validation middleware (e.g., Joi)
-- No authentication implemented despite presence of password-related messages in `messages.js`
-- Mongoose schema is inline in model file; consider extracting to separate schema file if adding more models
-- Tests not yet integrated; consider adding Jest for backend
+- Legacy todo code (`AddTodo`, `TodoList`, `/api/todos`, `Todo` model) is throwaway scaffolding — replace as Matchmoji features land.
+- No auth yet despite password-related strings in `messages.js`; registration/login flow needs to be built.
+- No backend tests configured.
