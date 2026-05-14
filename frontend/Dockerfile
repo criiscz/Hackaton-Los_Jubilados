@@ -20,10 +20,10 @@ RUN npm ci
 COPY . /usr/src/app
 
 # Expose the port the app runs in
-EXPOSE 3000
+EXPOSE 4000
 
 # Serve the app
-CMD ["npm", "start"]
+CMD ["npm", "run", "dev"]
 
 FROM development as dev-envs
 RUN <<EOF
@@ -38,4 +38,4 @@ usermod -aG docker vscode
 EOF
 # install Docker tools (cli, buildx, compose)
 COPY --from=gloursdocker/docker / /
-CMD [ "npm", "start" ]
+CMD ["npm", "run", "dev"]
