@@ -1,134 +1,39 @@
 const crypto = require("crypto");
-const { Todo } = require("./models/todos/todo");
+const { decodeFrame, send, sendError } = require("./utils/ws");
+const { PUBLIC, AUTHED } = require("./handlers");
+const { clearUserSocket } = require("./handlers/state");
 
 const clients = new Set();
 
-const encodeFrame = (data) => {
-  const payload = Buffer.from(data);
-  const payloadLength = payload.length;
-
-  if (payloadLength < 126) {
-    return Buffer.concat([Buffer.from([0x81, payloadLength]), payload]);
-  }
-
-  if (payloadLength < 65536) {
-    const header = Buffer.alloc(4);
-    header[0] = 0x81;
-    header[1] = 126;
-    header.writeUInt16BE(payloadLength, 2);
-    return Buffer.concat([header, payload]);
-  }
-
-  const header = Buffer.alloc(10);
-  header[0] = 0x81;
-  header[1] = 127;
-  header.writeBigUInt64BE(BigInt(payloadLength), 2);
-  return Buffer.concat([header, payload]);
-};
-
-const send = (socket, message) => {
-  if (!socket.destroyed) {
-    socket.write(encodeFrame(JSON.stringify(message)));
-  }
-};
-
-const broadcast = (message) => {
-  clients.forEach((client) => send(client, message));
-};
-
-const decodeFrame = (buffer) => {
-  const opcode = buffer[0] & 0x0f;
-  let offset = 2;
-  let payloadLength = buffer[1] & 0x7f;
-
-  if (payloadLength === 126) {
-    payloadLength = buffer.readUInt16BE(offset);
-    offset += 2;
-  } else if (payloadLength === 127) {
-    payloadLength = Number(buffer.readBigUInt64BE(offset));
-    offset += 8;
-  }
-
-  const isMasked = Boolean(buffer[1] & 0x80);
-  const mask = isMasked ? buffer.slice(offset, offset + 4) : null;
-  offset += isMasked ? 4 : 0;
-
-  const payload = buffer.slice(offset, offset + payloadLength);
-
-  if (isMasked) {
-    for (let i = 0; i < payload.length; i += 1) {
-      payload[i] ^= mask[i % 4];
-    }
-  }
-
-  return {
-    opcode,
-    payload: payload.toString("utf8"),
-  };
-};
-
-const listTodos = async () => Todo.find({}, { __v: 0 });
-
-const sendTodos = async (socket) => {
-  const todos = await listTodos();
-  send(socket, {
-    type: "todos:list",
-    data: todos,
-  });
-};
-
-const broadcastTodos = async () => {
-  const todos = await listTodos();
-  broadcast({
-    type: "todos:list",
-    data: todos,
-  });
-};
-
 const handleMessage = async (socket, rawMessage) => {
   let message;
-
   try {
     message = JSON.parse(rawMessage);
   } catch (error) {
-    send(socket, {
-      type: "error",
-      message: "Invalid JSON message",
-    });
-    return;
+    return sendError(socket, null, "Invalid JSON message");
+  }
+
+  const { type, payload } = message || {};
+  if (!type || typeof type !== "string") {
+    return sendError(socket, null, "Message 'type' is required");
   }
 
   try {
-    if (message.type === "todos:list") {
-      await sendTodos(socket);
+    if (PUBLIC[type]) {
+      await PUBLIC[type](socket, payload || {});
       return;
     }
-
-    if (message.type === "todos:create") {
-      const text = message.payload && message.payload.text;
-
-      if (!text || !text.trim()) {
-        send(socket, {
-          type: "error",
-          message: "Todo text is required",
-        });
-        return;
+    if (AUTHED[type]) {
+      if (!socket.userId) {
+        return sendError(socket, type, "Authentication required");
       }
-
-      await new Todo({ text }).save();
-      await broadcastTodos();
+      await AUTHED[type](socket, payload || {});
       return;
     }
-
-    send(socket, {
-      type: "error",
-      message: "Unknown message type",
-    });
+    sendError(socket, type, "Unknown message type");
   } catch (error) {
-    send(socket, {
-      type: "error",
-      message: error.message,
-    });
+    console.error(`[ws] handler error (${type}):`, error);
+    sendError(socket, type, error.message || "Internal error");
   }
 };
 
@@ -150,15 +55,18 @@ const acceptConnection = (socket, key) => {
   );
 };
 
+const cleanup = (socket) => {
+  clients.delete(socket);
+  if (socket.userId) clearUserSocket(socket.userId, socket);
+};
+
 const setupWebSocketServer = (server) => {
   server.on("upgrade", (req, socket) => {
     if (req.url !== "/ws") {
       socket.destroy();
       return;
     }
-
     const key = req.headers["sec-websocket-key"];
-
     if (!key) {
       socket.destroy();
       return;
@@ -166,29 +74,26 @@ const setupWebSocketServer = (server) => {
 
     acceptConnection(socket, key);
     clients.add(socket);
-    sendTodos(socket).catch((error) => {
-      send(socket, {
-        type: "error",
-        message: error.message,
-      });
+    send(socket, {
+      type: "hello",
+      message:
+        "Authenticate with {type:'auth', payload:{token}} or {type:'register', ...}",
     });
 
     socket.on("data", (buffer) => {
       const frame = decodeFrame(buffer);
-
       if (frame.opcode === 0x8) {
-        clients.delete(socket);
+        cleanup(socket);
         socket.end();
         return;
       }
-
       if (frame.opcode === 0x1) {
         handleMessage(socket, frame.payload);
       }
     });
 
-    socket.on("close", () => clients.delete(socket));
-    socket.on("error", () => clients.delete(socket));
+    socket.on("close", () => cleanup(socket));
+    socket.on("error", () => cleanup(socket));
   });
 };
 
